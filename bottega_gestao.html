@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Bottega Bernacca — Gestão de Salão</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F7F7F5;
+  --surface:#FFFFFF;
+  --surface2:#F2F1EF;
+  --border:#E0DED8;
+  --border-strong:#C8C5BE;
+  --text:#1A1916;
+  --text-secondary:#6B6860;
+  --text-muted:#A09D96;
+  --accent:#B5893A;
+  --accent-bg:#FBF4E8;
+  --accent-border:#E8D4A0;
+  --danger:#C0392B;
+  --danger-bg:#FEF0EE;
+  --danger-border:#F5C6C0;
+  --success:#1E7B4B;
+  --success-bg:#EBF7F1;
+  --success-border:#A8DCBE;
+  --warn:#8B5E00;
+  --warn-bg:#FFF8E6;
+  --warn-border:#F0D580;
+  --info:#1A3A6E;
+  --info-bg:#EEF3FF;
+  --info-border:#B0C4F8;
+  --radius:10px;
+  --radius-sm:6px;
+  --shadow:0 1px 4px rgba(0,0,0,.06);
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.app{max-width:960px;margin:0 auto;padding:16px}
+
+/* HEADER */
+.app-header{margin-bottom:16px}
+.app-header h1{font-size:18px;font-weight:600;color:var(--text);letter-spacing:-.3px}
+.app-header p{font-size:12px;color:var(--text-secondary);margin-top:2px}
+
+/* CONTROLS */
+.controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end}
+.ctrl{display:flex;flex-direction:column;gap:3px}
+.ctrl label{font-size:11px;font-weight:500;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em}
+select{font-size:13px;padding:7px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border-strong);background:var(--surface);color:var(--text);appearance:none;background-image:url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236B6860' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;cursor:pointer}
+select:focus{outline:none;border-color:var(--accent)}
+
+/* LAYOUT */
+.main{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:620px){
+  .app{padding:12px}
+  .app-header h1{font-size:16px}
+  .main{grid-template-columns:1fr}
+}
+
+/* CALENDÁRIO */
+.cal-card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+.cal-nav{display:flex;align-items:center;margin-bottom:12px}
+.cal-nav button{width:30px;height:30px;border-radius:var(--radius-sm);border:0.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:14px}
+.cal-nav button:hover{background:var(--surface2)}
+.cal-nav-title{flex:1;text-align:center;font-size:14px;font-weight:600;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-dh{font-size:10px;font-weight:600;color:var(--text-muted);text-align:center;padding:4px 0;text-transform:uppercase}
+.cal-day{border-radius:var(--radius-sm);padding:3px 2px;text-align:center;cursor:pointer;border:0.5px solid transparent;min-height:52px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:4px;gap:1px;transition:transform .1s,box-shadow .1s}
+.cal-day:active{transform:scale(.95)}
+.cal-day .num{font-size:12px;font-weight:600}
+.cal-day .lbl{font-size:8px;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 2px}
+.cal-day .bar-bg{width:75%;height:3px;border-radius:2px;margin-top:auto;margin-bottom:2px}
+.cal-day .bar-fg{height:3px;border-radius:2px}
+.cal-legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text-muted);margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border)}
+.cal-legend span{display:flex;align-items:center;gap:3px}
+.leg-dot{width:8px;height:3px;border-radius:2px;display:inline-block}
+
+/* ESCALA */
+.escala-card{background:var(--surface);border:0.5px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.escala-empty{padding:2rem 1rem;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:280px;text-align:center;gap:8px}
+.escala-empty .ico{font-size:28px;color:var(--text-muted)}
+.escala-empty p{font-size:13px;color:var(--text-secondary)}
+
+.sec{padding:12px 14px;border-bottom:0.5px solid var(--border)}
+.sec:last-child{border-bottom:none}
+.sec.bg-light{background:var(--surface2)}
+
+.escala-head{padding:14px;border-bottom:0.5px solid var(--border);background:var(--surface2)}
+.escala-head .date{font-size:16px;font-weight:600;color:var(--text)}
+.escala-head .turn{font-size:12px;color:var(--text-secondary);margin-top:2px}
+.head-badges{display:flex;flex-direction:column;gap:3px;align-items:flex-end}
+
+.met-row{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:0.5px solid var(--border)}
+.met{padding:10px 12px}
+.met:not(:last-child){border-right:0.5px solid var(--border)}
+.met .ml{font-size:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.04em;font-weight:500}
+.met .mv{font-size:20px;font-weight:700;color:var(--text);line-height:1.1;margin-top:2px}
+.met .ms{font-size:10px;color:var(--text-muted);margin-top:1px}
+
+.occ-bar{background:var(--surface2);border-radius:4px;height:8px;overflow:hidden}
+.occ-fill{height:8px;border-radius:4px;transition:width .4s ease}
+
+.badge{font-size:11px;padding:2px 9px;border-radius:20px;display:inline-block;font-weight:500}
+.badge-ok{background:var(--success-bg);color:var(--success);border:0.5px solid var(--success-border)}
+.badge-wn{background:var(--warn-bg);color:var(--warn);border:0.5px solid var(--warn-border)}
+.badge-dn{background:var(--danger-bg);color:var(--danger);border:0.5px solid var(--danger-border)}
+.badge-in{background:var(--accent-bg);color:var(--accent);border:0.5px solid var(--accent-border)}
+.badge-gr{background:var(--surface2);color:var(--text-secondary);border:0.5px solid var(--border)}
+
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--surface2);border-radius:20px;padding:3px 9px;margin:2px;color:var(--text)}
+.chip-dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+.tag-f{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--danger);font-weight:500;margin-right:3px}
+.tag-f .fdot{width:5px;height:5px;border-radius:50%;display:inline-block;opacity:.7;flex-shrink:0}
+.tag-f .farea{font-size:10px;color:var(--text-muted);font-weight:400}
+
+.btn-extra{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--danger);border:1px solid var(--danger-border);border-radius:20px;padding:3px 9px;margin:2px;cursor:pointer;background:transparent;font-family:inherit}
+.btn-extra:hover{background:var(--danger-bg)}
+
+.al-box{padding:10px 14px;border-bottom:0.5px solid var(--border);font-size:12px;display:flex;align-items:flex-start;gap:8px;line-height:1.4}
+.al-dn{background:var(--danger-bg);color:var(--danger)}
+.al-wn{background:var(--warn-bg);color:var(--warn)}
+.al-in{background:var(--info-bg);color:var(--info);border-left:3px solid var(--info-border)}
+.al-or{background:var(--accent-bg);color:var(--accent)}
+
+.sec-title{font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px}
+.pcard{background:var(--surface2);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:10px}
+.pcard.pref{border-color:var(--accent);border-width:1.5px}
+.pcard.xtra{border-color:var(--danger);border-width:1.5px}
+.pcard.faded{opacity:.35;border-style:dashed}
+.pcard-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:2px}
+.pcard-sub{font-size:10px;color:var(--text-muted);margin-bottom:6px}
+
+.res-wrap{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.res-inp{width:72px;font-size:15px;font-weight:600;padding:5px 8px;border-radius:var(--radius-sm);border:0.5px solid var(--accent);background:var(--surface);color:var(--text);text-align:center;font-family:inherit}
+.res-inp:focus{outline:none;box-shadow:0 0 0 2px var(--accent-border)}
+
+/* MODAL */
+.modal-ov{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;z-index:999;padding:0}
+@media(min-width:480px){.modal-ov{align-items:center;padding:16px}}
+.modal-box{background:var(--surface);border-radius:var(--radius) var(--radius) 0 0;padding:20px;width:100%;max-width:400px}
+@media(min-width:480px){.modal-box{border-radius:var(--radius)}}
+.modal-title{font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text)}
+.modal-sel,.modal-inp{width:100%;margin-bottom:10px;font-size:13px;padding:8px 12px;border-radius:var(--radius-sm);border:0.5px solid var(--border-strong);background:var(--surface);color:var(--text);font-family:inherit}
+.modal-sel:focus,.modal-inp:focus{outline:none;border-color:var(--accent)}
+.modal-acts{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.modal-acts button{padding:7px 16px;border-radius:var(--radius-sm);border:0.5px solid var(--border-strong);background:var(--surface2);color:var(--text);cursor:pointer;font-size:13px;font-family:inherit}
+.modal-acts .btn-ok{background:var(--accent);color:white;border-color:var(--accent)}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--success);color:white;border-radius:var(--radius);padding:10px 16px;font-size:13px;font-weight:500;z-index:1000;display:flex;align-items:center;gap:6px;box-shadow:0 4px 16px rgba(0,0,0,.2);white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="app-header">
+    <h1>Bottega Bernacca · Ibirapuera</h1>
+    <p>Gestão de Salão — Selecione um dia para ver a escala</p>
+  </div>
+  <div class="controls">
+    <div class="ctrl">
+      <label>Mês</label>
+      <select id="xm" onchange="changeMes()">
+        <option value="6">Julho 2026</option><option value="7">Agosto 2026</option>
+        <option value="8">Setembro 2026</option><option value="9">Outubro 2026</option>
+        <option value="10">Novembro 2026</option><option value="11">Dezembro 2026</option>
+      </select>
+    </div>
+    <div class="ctrl">
+      <label>Turno</label>
+      <select id="xt" onchange="upd()">
+        <option value="a">Almoço</option><option value="j">Jantar</option>
+      </select>
+    </div>
+  </div>
+  <div class="main">
+    <div id="cal"></div>
+    <div id="esc"></div>
+  </div>
+  <div id="modal"></div>
+</div>
+
+<script>
+const PAX={Segunda:{a:122,j:57},Terça:{a:134,j:101},Quarta:{a:154,j:111},Quinta:{a:185,j:131},Sexta:{a:262,j:187},Sábado:{a:486,j:218},Domingo:{a:482,j:19}};
+const DIAS=['Segunda','Terça','Quarta','Quinta','Sexta','Sábado','Domingo'];
+const FJ=['Segunda','Domingo'];
+const MN=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const FOLGAS={6:{
+  'Daniel':[7,12,14,21,28],'Jose':[1,6,13,19,20,27],'Vinicius':[8,15,22,29],
+  'Vanderlei':[6,12,13,20,27],'Leyla':[7,14,21,26,28],'Viviana':[6,13,19,20,27],
+  'Maya':[5,6,13,20,26,27],'Corinto':[1,7,14,20,21,28],'Antonio':[5,6,13,20,27],
+  'Emanuela':[6,13,19,20,26,27],'Vini Guimarães':[7,14,21,27,28],
+  'Edicarlos':[8,12,15,22,29],'Jovana':[1,5,8,15,22,29],
+  'João':[5,7,13,21,28],'Paulo':[6,13,20,27],'Breno':[6,14,19,20,27],'Willian':[8,13,22,29],
+  'Tayna':[6,13,20,27],'Fernanda':[6,13,20,27],'Fernanda Karen':[7,14,21,28],
+  'Michele':[7,12,14,21,28],'Maria':[5,6,13,20,27],'Tayna (faxina)':[6,13,20,26,27],
+}};
+const FERIAS={6:['Isaías']};
+const EQ={
+  garcons:{l:'Garçons',c:'#378ADD',min:3,m:['Daniel','Corinto','Maya','Viviana','Leyla','Vanderlei','Vinicius','Jose','Antonio']},
+  bar:    {l:'Bar',c:'#D85A30',min:2,m:['Paulo','Breno','João','Willian']},
+  rec:    {l:'Recepção',c:'#D4537E',min:2,m:['Tayna','Fernanda','Fernanda Karen']},
+  boqb:   {l:'Boqueta Bebida',c:'#7C3AED',min:1,m:['Edicarlos','Vini Guimarães']},
+  boqc:   {l:'Boqueta Comida',c:'#BA7517',min:1,m:['Emanuela','Jovana']},
+  fax:    {l:'Faxina',c:'#888780',min:2,m:['Michele','Maria','Tayna (faxina)']},
+};
+const PD=[
+  {id:'P01',n:'Praça 01',pref:false,fch:false,gc:['Daniel','Corinto','Isaías'],tm:17,tl:56},
+  {id:'P02',n:'Praça 02',pref:true, fch:false,gc:['Viviana','Leyla'],tm:6,tl:24},
+  {id:'P03',n:'Praça 03',pref:true, fch:false,gc:['Vanderlei','Vinicius','Jose'],tm:10,tl:44},
+  {id:'P04',n:'Praça 04',pref:true, fch:false,gc:['Maya','Antonio'],tm:14,tl:54},
+  {id:'P05',n:'Praça 05',pref:false,fch:true, gc:[],tm:17,tl:63},
+  {id:'P06',n:'Praça 06',pref:false,fch:true, gc:[],tm:12,tl:46},
+];
+const CAA=PD.filter(p=>!p.fch).reduce((s,p)=>s+p.tl,0);
+const MAA=PD.filter(p=>!p.fch).reduce((s,p)=>s+p.tm,0);
+const FNAT={'2026-01-01':'Ano Novo','2026-02-16':'Carnaval','2026-02-17':'Carnaval','2026-04-03':'6a Santa','2026-04-05':'Páscoa','2026-04-21':'Tiradentes','2026-05-01':'Dia Trabalho','2026-06-04':'Corpus Christi','2026-07-09':'Rev. Constitucionalista','2026-09-07':'Independência','2026-10-12':'N.Sra. Aparecida','2026-11-02':'Finados','2026-11-15':'Rep. Proclamação','2026-11-20':'Consciência Negra','2026-12-25':'Natal'};
+const FMUN={'2026-01-25':'Aniversário SP'};
+const nFer=ds=>FNAT[ds]||FMUN[ds]||'';
+
+let RES={},cm=6,cy=2026,dSel=null;
+const dim=m=>new Date(2026,m+1,0).getDate();
+const dnom=(m,d)=>{const dt=new Date(2026,m,d);return DIAS[dt.getDay()===0?6:dt.getDay()-1];};
+const ds2s=(m,d)=>`2026-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+const gm=()=>parseInt(document.getElementById('xm').value);
+const gt=()=>document.getElementById('xt').value;
+const rk=(mi,d,tu)=>`${mi}_${d}_${tu}`;
+const gRes=(mi,d,tu)=>RES[rk(mi,d,tu)]||0;
+const sRes=(mi,d,tu,v)=>{RES[rk(mi,d,tu)]=v;};
+const eFolga=(n,d,mi)=>{if((FERIAS[mi]||[]).includes(n))return true;return(FOLGAS[mi]&&FOLGAS[mi][n])?FOLGAS[mi][n].includes(d):false;};
+const gDisp=(d,mi,area)=>EQ[area].m.filter(g=>!eFolga(g,d,mi));
+const calcPax=(mi,d,tu)=>{const dn=dnom(mi,d),ds=ds2s(mi,d),fer=nFer(ds);if(FJ.includes(dn)&&tu==='j')return 0;const base=fer?Math.round(PAX[dn][tu]*1.3):PAX[dn][tu];const res=gRes(mi,d,tu);return Math.max(base,res>0?Math.round(base*0.7+res*1.1):base);};
+const tFolgas=(d,mi)=>{const l=[],v=new Set();Object.keys(EQ).forEach(area=>EQ[area].m.forEach(g=>{if(eFolga(g,d,mi)&&!v.has(g)){l.push({n:g,a:EQ[area].l,c:EQ[area].c});v.add(g);}}));return l;};
+
+const bdg=(txt,cls)=>`<span class="badge ${cls}">${txt}</span>`;
+const chip=(n,c)=>`<span class="chip"><span class="chip-dot" style="background:${c}"></span>${n}</span>`;
+const tagF=(n,a,c)=>`<span class="tag-f"><span class="fdot" style="background:${c}"></span>${n}<span class="farea">(${a})</span></span>`;
+const xBtn=(area)=>`<button class="btn-extra" onclick="openExtra('${area}')"><i class="ti ti-user-plus"></i> Chamar extra</button>`;
+
+function changeMes(){cm=gm();dSel=null;renderCal();renderEmpty();}
+function upd(){if(dSel)renderEsc(dSel,cm);else renderEmpty();}
+function onRes(mi,d,tu){sRes(mi,d,tu,parseInt(document.getElementById('inp-res').value)||0);renderEsc(d,mi);renderCal();}
+
+function renderCal(){
+  const tot=dim(cm),off=new Date(cy,cm,1).getDay(),tu=gt();
+  let h=`<div class="cal-card"><div class="cal-nav">
+    <button onclick="cPrev()"><i class="ti ti-chevron-left"></i></button>
+    <span class="cal-nav-title">${MN[cm]} ${cy}</span>
+    <button onclick="cNext()"><i class="ti ti-chevron-right"></i></button>
+  </div><div class="cal-grid">`;
+  ['D','S','T','Q','Q','S','S'].forEach(d=>{h+=`<div class="cal-dh">${d}</div>`;});
+  for(let i=0;i<off;i++) h+=`<div></div>`;
+  for(let d=1;d<=tot;d++){
+    const dt=new Date(cy,cm,d),dow=dt.getDay();
+    const ds=ds2s(cm,d),dn=dnom(cm,d);
+    const isSel=dSel===d,fer=nFer(ds);
+    const nf=tFolgas(d,cm).length,res=gRes(cm,d,tu);
+    const pax=calcPax(cm,d,tu),ocp=Math.min(100,Math.round(pax/CAA*100));
+    const oc=ocp>=85?'#C0392B':ocp>=60?'#8B5E00':'#1E7B4B';
+    const isDom=dow===0,isSab=dow===6;
+    let bg='transparent',cl=isDom?'#C0392B':isSab?'#B5893A':'#1A1916',br='transparent';
+    if(isSel){bg='#1A1916';cl='white';br='#1A1916';}
+    else if(fer){bg='#FFF8E6';br='#F0D580';}
+    h+=`<div class="cal-day" onclick="selDay(${d})" style="background:${bg};color:${cl};border-color:${br}">
+      <span class="num">${d}</span>
+      ${fer&&!isSel?`<span class="lbl" style="color:#8B5E00">${fer.slice(0,5)}</span>`:''}
+      ${res>0?`<span class="lbl" style="color:${isSel?'rgba(255,255,255,.85)':'#B5893A'}">${res}r</span>`:''}
+      <div class="bar-bg" style="background:${isSel?'rgba(255,255,255,.2)':'#E0DED8'}">
+        <div class="bar-fg" style="background:${isSel?'white':oc};width:${ocp}%"></div>
+      </div>
+      ${nf>0?`<span class="lbl" style="color:${isSel?'rgba(255,255,255,.65)':'#A09D96'}">${nf}f</span>`:''}
+    </div>`;
+  }
+  h+=`</div><div class="cal-legend">
+    <span><span class="leg-dot" style="background:#1E7B4B"></span>Baixo</span>
+    <span><span class="leg-dot" style="background:#8B5E00"></span>Médio</span>
+    <span><span class="leg-dot" style="background:#C0392B"></span>Alto</span>
+    <span style="color:#B5893A">Nr=reservas</span>
+    <span>Nf=folgas</span>
+  </div>
+  ${cm===6?`<div class="al-box al-or" style="margin-top:10px;border-radius:8px"><i class="ti ti-beach"></i><span><strong>Isaías</strong> de férias em julho — retorna em agosto.</span></div>`:''}
+  </div>`;
+  document.getElementById('cal').innerHTML=h;
+}
+
+function selDay(d){
+  dSel=d;renderCal();renderEsc(d,cm);
+  setTimeout(()=>{
+    const el=document.getElementById('esc');
+    if(el&&window.innerWidth<=620) el.scrollIntoView({behavior:'smooth',block:'start'});
+  },80);
+}
+
+function renderEmpty(){
+  document.getElementById('esc').innerHTML=`<div class="escala-card"><div class="escala-empty">
+    <i class="ti ti-calendar-event ico"></i>
+    <p>Toque em um dia para ver a escala completa.</p>
+  </div></div>`;
+}
+
+function renderEsc(d,mi){
+  const dn=dnom(mi,d),tu=gt(),ds=ds2s(mi,d),fer=nFer(ds);
+  const fchJ=FJ.includes(dn)&&tu==='j',isDom=dn==='Domingo';
+  const res=gRes(mi,d,tu),paxBase=fchJ?0:(fer?Math.round(PAX[dn][tu]*1.3):PAX[dn][tu]);
+  const pax=fchJ?0:calcPax(mi,d,tu),acima=res>0&&pax>paxBase;
+  const oc=Math.min(1,pax/CAA),ocp=Math.round(oc*100);
+  const ocC=ocp>=85?'#C0392B':ocp>=60?'#8B5E00':'#1E7B4B';
+  const stC=ocp>=85?'badge-dn':ocp>=60?'badge-wn':'badge-ok';
+  const stL=ocp>=85?'Alta demanda':ocp>=60?'Mov. médio':'Mov. baixo';
+
+  const dg=fchJ?[]:EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+  const fol=tFolgas(d,mi);
+
+  const dist={P01:[],P02:[],P03:[],P04:[],P05:[],P06:[]};
+  const al=new Set();
+  PD.forEach(p=>{if(p.fch&&oc<0.85)return;p.gc.forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
+  ['P02','P03','P04','P01'].forEach(pid=>{dg.forEach(g=>{if(!al.has(g)){dist[pid].push(g);al.add(g);}});});
+
+  let h=`<div class="escala-card">`;
+
+  // header
+  h+=`<div class="escala-head">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+      <div><div class="date">${dn}, ${d} de ${MN[mi]}</div><div class="turn">${tu==='a'?'Almoço':'Jantar'}</div></div>
+      <div class="head-badges">${bdg(stL,stC)}${fer?bdg('Feriado: '+fer,'badge-wn'):''}${fchJ?bdg('Fechado','badge-dn'):''}</div>
+    </div>
+  </div>`;
+
+  if(fchJ){h+=`<div class="sec" style="color:#6B6860;font-size:13px">Restaurante fechado. Nenhuma escala necessária.</div></div>`;document.getElementById('esc').innerHTML=h;return;}
+
+  // reservas
+  h+=`<div class="sec bg-light">
+    <div class="res-wrap">
+      <i class="ti ti-calendar-check" style="color:#B5893A;font-size:15px"></i>
+      <span style="font-size:13px;font-weight:500;flex:1">Reservas confirmadas</span>
+      <input id="inp-res" class="res-inp" type="number" min="0" max="500" value="${res||''}" placeholder="0" oninput="onRes(${mi},${d},'${tu}')">
+      <span style="font-size:12px;color:#6B6860">pax</span>
+    </div>
+    ${acima?`<div style="margin-top:6px;font-size:12px;color:#8B5E00;display:flex;align-items:center;gap:4px"><i class="ti ti-alert-triangle"></i>Acima da média (${paxBase}) — ajustado para ${pax} pax.</div>`:''}
+    ${res>0&&!acima?`<div style="margin-top:6px;font-size:12px;color:#1E7B4B;display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i>Dentro da média — sem impacto na escala.</div>`:''}
+  </div>`;
+
+  // métricas
+  h+=`<div class="met-row">
+    <div class="met"><div class="ml">Pax esperado</div><div class="mv">${pax}</div><div class="ms">${res>0?res+' reservados':'média histórica'}</div></div>
+    <div class="met"><div class="ml">Garçons</div><div class="mv">${dg.length}</div><div class="ms">${fol.length} de folga</div></div>
+    <div class="met"><div class="ml">Ocupação</div><div class="mv">${ocp}%</div><div class="ms">${Math.round(MAA*oc)} mesas</div></div>
+  </div>`;
+
+  // barra
+  h+=`<div class="sec"><div style="display:flex;justify-content:space-between;font-size:11px;color:#6B6860;margin-bottom:4px"><span>Ocupação das praças ativas</span><span>${ocp}%</span></div>
+    <div class="occ-bar"><div class="occ-fill" style="background:${ocC};width:${ocp}%"></div></div></div>`;
+
+  // alertas
+  if(ocp>=85) h+=`<div class="al-box al-dn"><i class="ti ti-flame"></i><span><strong>Alta demanda</strong> — considere abrir Praça 05 e Praça 06.</span></div>`;
+  if(isDom&&fol.length>0) h+=`<div class="al-box al-in"><i class="ti ti-coin" style="font-size:14px;flex-shrink:0"></i><div><strong>Domingo — considerar comprar folgas</strong><br><span style="font-size:11px">${fol.map(f=>f.n).join(', ')} de folga. Alta demanda — avalie se vale comprar.</span></div></div>`;
+  if(mi===6) h+=`<div class="al-box al-or"><i class="ti ti-beach"></i><span><strong>Isaías</strong> de férias — retorna em agosto.</span></div>`;
+
+  // folgas
+  if(fol.length) h+=`<div class="al-box al-dn" style="flex-wrap:wrap;gap:4px;padding:10px 14px"><div style="width:100%;display:flex;align-items:center;gap:5px;margin-bottom:4px;font-weight:600"><i class="ti ti-user-off"></i>De folga hoje (${fol.length})</div><div>${fol.map(f=>tagF(f.n,f.a,f.c)).join('')}</div></div>`;
+
+  // praças
+  h+=`<div class="sec"><div class="sec-title">Praças</div><div class="cards-grid">`;
+  PD.forEach(p=>{
+    const gl=dist[p.id]||[],isFch=p.fch&&oc<0.85;
+    const ppx=Math.round(pax*(p.tl/CAA)),mp=Math.round(p.tm*Math.min(1,oc)),nx=gl.length===0;
+    if(isFch){h+=`<div class="pcard faded"><div class="pcard-name">${p.n}</div><div class="pcard-sub">Fechada · abre &gt;85%</div></div>`;return;}
+    const cls=p.pref?'pcard pref':nx?'pcard xtra':'pcard';
+    h+=`<div class="${cls}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pcard-name">${p.n}</span>${p.pref?bdg('pref','badge-in'):''}</div><div class="pcard-sub">${ppx}p · ${mp}m</div><div>${gl.map(g=>chip(g,'#378ADD')).join('')}${nx?xBtn(p.n):''}</div></div>`;
+  });
+  h+=`</div></div>`;
+
+  // suporte
+  h+=`<div class="sec"><div class="sec-title">Suporte</div><div class="cards-grid">`;
+  [['bar','Bar'],['rec','Recepção'],['boqb','Boqueta Bebida'],['boqc','Boqueta Comida'],['fax','Faxina']].forEach(([k,l])=>{
+    const eq=EQ[k],disp=gDisp(d,mi,k),nx=disp.length<eq.min;
+    h+=`<div class="${nx?'pcard xtra':'pcard'}"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><div style="display:flex;align-items:center;gap:4px"><span class="chip-dot" style="background:${eq.c}"></span><span class="pcard-name">${l}</span></div>${nx?bdg('Extra','badge-dn'):bdg('Ok','badge-ok')}</div><div class="pcard-sub">${disp.length}/${eq.m.length} disp.</div><div>${disp.map(g=>chip(g,eq.c)).join('')}${nx?xBtn(l):''}</div></div>`;
+  });
+  h+=`</div></div></div>`;
+  document.getElementById('esc').innerHTML=h;
+}
+
+function openExtra(area){
+  document.getElementById('modal').innerHTML=`
+    <div class="modal-ov" onclick="if(event.target===this)cModal()">
+      <div class="modal-box">
+        <div class="modal-title">Chamar extra — ${area}</div>
+        <select id="et" class="modal-sel"><option>Almoço</option><option>Jantar</option><option>Dia todo</option></select>
+        <input id="eo" class="modal-inp" type="text" placeholder="Observação (opcional)">
+        <div class="modal-acts">
+          <button onclick="cModal()">Cancelar</button>
+          <button class="btn-ok" onclick="cfExtra('${area}')">Confirmar</button>
+        </div>
+      </div>
+    </div>`;
+}
+function cfExtra(area){
+  const t=document.getElementById('et').value,o=document.getElementById('eo').value;
+  cModal();
+  const el=document.createElement('div');
+  el.className='toast';
+  el.innerHTML=`<i class="ti ti-check"></i> Extra confirmado: <strong style="margin-left:2px">${area}</strong>&nbsp;—&nbsp;${t}${o?' · '+o:''}`;
+  document.body.appendChild(el);setTimeout(()=>el.remove(),3500);
+}
+function cModal(){document.getElementById('modal').innerHTML='';}
+function cPrev(){cm--;if(cm<0){cm=11;cy--;}dSel=null;document.getElementById('xm').value=cm;renderCal();renderEmpty();}
+function cNext(){cm++;if(cm>11){cm=0;cy++;}dSel=null;document.getElementById('xm').value=cm;renderCal();renderEmpty();}
+
+renderCal();renderEmpty();
+</script>
+</body>
+</html>
