@@ -302,13 +302,13 @@ const DIAS=["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
 const FJ=["Segunda","Domingo"];
 const MN=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 let FOLGAS={6:{
-  "Daniel":[7,12,14,21,28],"Jose":[1,6,13,19,20,27],"Vinicius":[8,15,22,29],
+  "Daniel":[7,12,14,21,28],"Jose":[1,6,13,19,20,27],"Vinicius":[8,15,22,26,29],
   "Vanderlei":[6,12,13,20,27],"Leyla":[7,14,21,26,28],"Viviana":[6,13,19,20,27],
-  "Maya":[5,6,13,20,26,27],"Corinto":[1,7,14,20,21,28],"Antonio":[5,6,13,20,27],
-  "Emanuela":[6,13,19,20,26,27],"Vini Guimarães":[7,14,21,27,28],
+  "Maya":[5,6,13,20,27],"Corinto":[1,7,12,14,20,21,28],"Antonio":[5,6,13,20,27],
+  "Emanuela":[6,13,19,20,27],"Vini Guimarães":[7,14,21,26,27,28],
   "Edicarlos":[8,12,15,22,29],"Jovana":[1,5,8,15,22,29],
-  "João":[5,7,13,21,28],"Paulo":[6,13,20,27],"Breno":[6,14,19,20,27],"Willian":[8,13,22,29],
-  "Tayna":[6,13,20,27],"Fernanda":[6,13,20,27],"Fernanda Karen":[7,14,21,28],
+  "João":[5,7,13,21,28],"Paulo":[5,6,13,20,27],"Breno":[6,14,19,20,27],"Willian":[8,12,13,22,29],
+  "Tayna":[6,13,19,20,27],"Fernanda":[6,13,20,27],"Fernanda Karen":[7,14,21,26,28],
   "Michele":[7,12,14,21,28],"Maria":[5,6,13,20,27],"Tayna (faxina)":[6,13,20,26,27],
 }};
 const FERIAS={6:["Isaías","Fernanda"]};
@@ -663,13 +663,14 @@ function renderEsc(d,mi){
   if(isSabDomFer){
     const extEst=getExtras("esteril",d,mi);
     h+=`<div class="pc${extEst.length===0?" px":""}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;flex-wrap:wrap;gap:4px">
         <div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:#2A7A6A"></span><span class="pn">Esterilização</span></div>
         ${extEst.length===0?bdg("Extra","dn"):bdg("Ok","ok")}
       </div>
-      <div class="ps">Sempre extra</div>
-      <div>${extEst.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('esteril',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
-      <div class="extra-input-wrap"><input type="text" placeholder="+ extra..." id="ei-esteril" onkeydown="if(event.key==='Enter'){addExtra('esteril',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('esteril',${d},${mi},document.getElementById('ei-esteril').value.trim());renderEsc(${d},${mi})">+</button></div>
+      <div class="ps" style="margin-bottom:6px">Sempre extra · fins de semana</div>
+      <div style="display:flex;flex-wrap:wrap;gap:2px">
+        ${extEst.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('esteril',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
+        <div class="extra-input-wrap"><input type="text" placeholder="+ extra..." id="ei-esteril" onkeydown="if(event.key==='Enter'){addExtra('esteril',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('esteril',${d},${mi},document.getElementById('ei-esteril').value.trim());renderEsc(${d},${mi})">+</button></div>
       </div>
     </div>`;
   }
