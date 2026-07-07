@@ -464,13 +464,22 @@ function selDay(d){
 function renderEmpty(){
   const hoje=agHoje();
   const nHoje=AGENDA.filter(c=>c.data===hoje&&!c.concluido).length;
-  const lista=AGENDA.filter(c=>!c.concluido).sort((a,b)=>a.data.localeCompare(b.data)||a.hora.localeCompare(b.hora)).slice(0,5);
+  // mostrar só próxima ocorrência de cada série recorrente
+  const hoje2=agHoje();
+  const gruposVistos2={};
+  const listaFull=AGENDA.filter(c=>!c.concluido&&c.data>=hoje2).sort((a,b)=>a.data.localeCompare(b.data)||a.hora.localeCompare(b.hora));
+  const lista=[];
+  listaFull.forEach(c=>{
+    if(!c.grupoId){lista.push(c);return;}
+    if(!gruposVistos2[c.grupoId]){gruposVistos2[c.grupoId]=true;lista.push(c);}
+  });
+  const listaSlice=lista.slice(0,5);
   
   let itensH="";
-  if(lista.length===0){
+  if(listaSlice.length===0){
     itensH=`<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:13px">Nenhum compromisso pendente.</div>`;
   } else {
-    lista.forEach(c=>{
+    listaSlice.forEach(c=>{
       const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
       const isH=c.data===hoje;
       itensH+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
@@ -498,7 +507,7 @@ function renderEmpty(){
       ${itensH}
     </div>
     <div style="padding:12px 16px;border-top:1.5px solid var(--border)">
-      <button onclick="agNovo();openAgenda()" style="width:100%;padding:11px;border-radius:var(--rs);border:1.5px dashed var(--border-s);background:transparent;color:var(--text2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ Novo compromisso</button>
+      <button onclick="openAgendaNovo()" style="width:100%;padding:11px;border-radius:var(--rs);border:1.5px dashed var(--border-s);background:transparent;color:var(--text2);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">+ Novo compromisso</button>
     </div>
     <div style="padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border)">
       <div style="text-align:center;color:var(--text3);font-size:12px">📅 Toque em um dia para ver a escala</div>
@@ -962,6 +971,11 @@ function agGetFiltrados(){
   return resultado;
 }
 
+function openAgendaNovo(){
+  carregarAgenda();
+  agEditId=null;agTipo="tarefa";
+  renderAgendaForm({data:agHoje(),hora:"",titulo:"",tipo:"tarefa",prioridade:"normal",recorrencia:"nunca"});
+}
 function openAgenda(){
   carregarAgenda();
   agFiltro="todos";agEditId=null;
@@ -1069,12 +1083,11 @@ function renderAgendaForm(c){
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Data</label>
-          <input type="text" id="ag-data-display" placeholder="DD/MM/AAAA" value="${c.data?agFmtData(c.data):""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit" oninput="agParseData(this.value)">
-          <input type="hidden" id="ag-data" value="${c.data||agHoje()}">
+          <input type="date" id="ag-data-display" value="${c.data||agHoje()}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Horário</label>
-          <input type="text" id="ag-hora" placeholder="Ex: 10:30" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit">
+          <input type="time" id="ag-hora" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
         </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
@@ -1113,14 +1126,15 @@ function agParseData(val){
 }
 function agSalvar(){
   const titulo=document.getElementById("ag-titulo").value.trim();
-  const data=document.getElementById("ag-data").value;
+  // ler data do campo display e converter DD/MM/AAAA → AAAA-MM-DD
+  const dispEl=document.getElementById("ag-data-display");
+  let data=dispEl&&dispEl.value?dispEl.value:agHoje();
   if(!titulo){alert("Informe o título.");return;}
-  if(!data){alert("Informe a data.");return;}
   const recorrencia=document.getElementById("ag-recor").value;
   const hora=document.getElementById("ag-hora").value;
   const tipo=agTipo;
   const prioridade=document.getElementById("ag-prior").value;
-  const desc=document.getElementById("ag-desc").value.trim();
+  const descEl=document.getElementById("ag-desc");const desc=descEl?descEl.value.trim():"";
 
   // se editando, remove o antigo e suas recorrências geradas
   if(agEditId){
