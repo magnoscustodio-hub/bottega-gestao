@@ -492,7 +492,7 @@ function renderEmpty(){
         <div style="font-size:16px;font-weight:800;color:white">🗓️ Agenda</div>
         <div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">${nHoje} compromisso${nHoje!==1?"s":""} hoje</div>
       </div>
-      <button onclick="openAgenda()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:var(--rs);color:white;font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;font-family:inherit">Ver tudo →</button>
+      <button onclick="openAgendaSemana()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:var(--rs);color:white;font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;font-family:inherit">Próximos →</button>
     </div>
     <div style="padding:0 16px 4px">
       ${itensH}
@@ -911,7 +911,6 @@ Object.keys(AUSENCIAS).forEach(k=>{AUSENCIAS[k]=AUSENCIAS[k].map(x=>typeof x==="
 const AG_TIPOS={
   reuniao:{label:"Reunião",emoji:"👥",cor:"#1A4A8B",bg:"#EEF3FF",br:"#A8C0F0"},
   tarefa: {label:"Tarefa",emoji:"✅",cor:"#1A6B3C",bg:"#E8F5EE",br:"#A8D8BC"},
-  lembrete:{label:"Lembrete",emoji:"🔔",cor:"#8B6000",bg:"#FFF8E6",br:"#E8C840"},
   compromisso:{label:"Compromisso",emoji:"📌",cor:"#B02020",bg:"#FEF0EE",br:"#E8A8A0"},
   operacao:{label:"Operação",emoji:"🍽️",cor:"#5A1A8B",bg:"#F5EEFF",br:"#C8A8F0"},
   outro:{label:"Outro",emoji:"📝",cor:"#4A4A4A",bg:"#F2F1EF",br:"#C8C5BE"},
@@ -935,27 +934,29 @@ function agFmtData(ds){const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;}
 function agFmtDia(ds){const dt=new Date(ds+"T12:00:00");return DS_SEM[dt.getDay()];}
 function agGenId(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
 
-let agGruposAbertos={};
-
 function agGetFiltrados(){
   let l=[...AGENDA];
   if(agFiltro==="hoje") l=l.filter(c=>agIsHoje(c.data));
   else if(agFiltro==="semana") l=l.filter(c=>agIsSemana(c.data));
   else if(agFiltro==="pendente") l=l.filter(c=>!c.concluido);
-  else if(["reuniao","tarefa","lembrete","compromisso","operacao","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
+  else if(agFiltro==="proximos7"){
+    const hoje=agHoje();
+    const fim=new Date();fim.setDate(fim.getDate()+7);
+    const fimStr=fim.toISOString().split("T")[0];
+    l=l.filter(c=>c.data>=hoje&&c.data<=fimStr&&!c.concluido);
+  }
+  else if(["reuniao","tarefa","compromisso","operacao","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
   l=l.sort((a,b)=>{if(a.data!==b.data)return a.data.localeCompare(b.data);if(a.hora&&b.hora)return a.hora.localeCompare(b.hora);return 0;});
-  
-  // para recorrentes: mostrar só a próxima ocorrência futura (ou hoje), ocultar o resto
-  const gruposVisiveis={};
+
+  // recorrentes: mostrar APENAS a próxima ocorrência (hoje ou futura)
+  const gruposVistos={};
   const resultado=[];
+  const hoje=agHoje();
   l.forEach(c=>{
     if(!c.grupoId){resultado.push(c);return;}
-    // se grupo está aberto, mostra todos
-    if(agGruposAbertos[c.grupoId]){resultado.push(c);return;}
-    // senão mostra só o primeiro relevante (hoje ou futuro)
-    if(!gruposVisiveis[c.grupoId]){
-      const hoje=agHoje();
-      if(c.data>=hoje){gruposVisiveis[c.grupoId]=true;resultado.push({...c,_primeiroDoGrupo:true});}
+    if(!gruposVistos[c.grupoId]&&c.data>=hoje){
+      gruposVistos[c.grupoId]=true;
+      resultado.push({...c,_primeiroDoGrupo:true});
     }
   });
   return resultado;
@@ -966,59 +967,51 @@ function openAgenda(){
   agFiltro="todos";agEditId=null;
   renderAgendaModal();
 }
+function openAgendaSemana(){
+  carregarAgenda();
+  agFiltro="proximos7";agEditId=null;
+  renderAgendaModal();
+}
 
 function renderAgendaModal(){
   const now=new Date();
   const hj=`${DS_SEM[now.getDay()]}, ${now.getDate()} de ${MN[now.getMonth()]}`;
   const nHoje=AGENDA.filter(c=>agIsHoje(c.data)&&!c.concluido).length;
   const lista=agGetFiltrados();
-
-  // agrupar por data
   const grupos={};
   lista.forEach(c=>{if(!grupos[c.data])grupos[c.data]=[];grupos[c.data].push(c);});
 
   let itens="";
   if(lista.length===0){
-    itens=`<div class="ag-empty">📋 Nenhum compromisso. Toque em + para adicionar.</div>`;
+    itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">Nenhum compromisso. Toque em + para adicionar.</div>`;
   } else {
     Object.keys(grupos).sort().forEach(data=>{
       const isH=agIsHoje(data);
-      itens+=`<div class="ag-day-label">${isH?"📅 Hoje":agFmtDia(data)+", "+agFmtData(data)}</div>`;
+      itens+=`<div style="font-size:10px;font-weight:800;color:${isH?"var(--blue)":"var(--text3)"};text-transform:uppercase;letter-spacing:.08em;padding:10px 0 5px">${isH?"HOJE":agFmtDia(data).toUpperCase()+" · "+agFmtData(data)}</div>`;
       grupos[data].forEach(c=>{
         const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
         const isRecor=c.recorrencia&&c.recorrencia!=="nunca";
         const isPrimeiro=c._primeiroDoGrupo;
-        const isAberto=c.grupoId&&agGruposAbertos[c.grupoId];
-        const recorLabel=c.recorrencia==="semanal"?"Semanal":c.recorrencia==="quinzenal"?"Quinzenal":"Mensal";
         const totalGrupo=isRecor?AGENDA.filter(x=>x.grupoId===c.grupoId&&x.data>=agHoje()&&!x.concluido).length:0;
-        itens+=`<div class="ag-comp${c.concluido?" concluido":""}" style="border-left-color:${c.concluido?"var(--border-s)":t.cor};${!isPrimeiro&&isRecor?"margin-left:16px;border-left-style:dashed;":""}">
-          <div class="ag-comp-hd">
-            <span class="ag-comp-titulo${c.concluido?" concluido":""}">${t.emoji} ${c.titulo}</span>
-            <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-              <span class="bdg" style="background:${t.bg};color:${t.cor};border-color:${t.br};font-size:10px">${t.label}</span>
-              ${isRecor?`<span class="bdg" style="background:var(--purple-bg);color:var(--purple);border-color:var(--purple-br);font-size:10px">🔁</span>`:""}
+        itens+=`<div style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${c.concluido?"var(--border)":t.cor+"40"};border-left:4px solid ${c.concluido?"var(--border-s)":t.cor};padding:10px 12px;margin-bottom:6px;opacity:${c.concluido?.55:1}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:${c.desc&&!c.concluido?"6px":"0"}">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:14px;font-weight:700;color:var(--text);${c.concluido?"text-decoration:line-through;color:var(--text3)":""};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.titulo}</div>
+              <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap">
+                ${c.hora?`<span style="font-size:11px;color:var(--text2);font-weight:600">${c.hora}</span>`:""}
+                <span style="font-size:10px;font-weight:700;color:${t.cor};background:${t.cor}18;border-radius:20px;padding:1px 7px">${t.label}</span>
+                ${isRecor?`<span style="font-size:10px;font-weight:700;color:var(--purple);background:var(--purple-bg);border-radius:20px;padding:1px 7px">↻ ${c.recorrencia==="semanal"?"Semanal":c.recorrencia==="quinzenal"?"Quinzenal":"Mensal"}${isPrimeiro&&totalGrupo>1?" · "+totalGrupo+"x":""}</span>`:""}
+                ${c.prioridade==="alta"?`<span style="font-size:10px;font-weight:700;color:var(--red);background:var(--red-bg);border-radius:20px;padding:1px 7px">Urgente</span>`:""}
+                ${c.concluido?`<span style="font-size:10px;font-weight:700;color:var(--green)">Concluído</span>`:""}
+              </div>
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              ${!c.concluido?`<button onclick="agConcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--green-br);background:var(--green-bg);cursor:pointer;color:var(--green);font-size:14px;display:flex;align-items:center;justify-content:center" title="Concluir">✓</button>`:`<button onclick="agReabrir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Reabrir">↩</button>`}
+              <button onclick="agEditar('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Editar">✏️</button>
+              <button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="Excluir">×</button>
             </div>
           </div>
-          <div class="ag-comp-meta">
-            ${c.hora?`🕐 ${c.hora}`:""}
-            ${isRecor?`<span style="color:var(--purple);font-weight:600;font-size:11px">${recorLabel}</span>`:""}
-            ${c.prioridade==="alta"?`<span style="color:var(--red);font-weight:700">⚡ Urgente</span>`:""}
-            ${c.concluido?`<span style="color:var(--green);font-weight:700">✓ Concluído</span>`:""}
-          </div>
-          ${c.desc?`<div class="ag-comp-desc">${c.desc}</div>`:""}
-          <div class="ag-comp-acts">
-            ${!c.concluido?
-              `<button class="ag-btn" style="background:var(--green-bg);color:var(--green);border-color:var(--green-br)" onclick="agConcluir('${c.id}')">✓ Concluir</button>`:
-              `<button class="ag-btn" style="background:var(--surface2);color:var(--text2);border-color:var(--border-s)" onclick="agReabrir('${c.id}')">↩ Reabrir</button>`}
-            <button class="ag-btn" style="background:var(--gold-bg);color:var(--gold);border-color:var(--gold-br)" onclick="agEditar('${c.id}')">✏️ Editar</button>
-            <button class="ag-btn" style="background:var(--red-bg);color:var(--red);border-color:var(--red-br)" onclick="agExcluir('${c.id}')">🗑️</button>
-          </div>
-          ${isPrimeiro&&totalGrupo>1?`
-          <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-            <button onclick="agToggleGrupo('${c.grupoId}')" style="width:100%;background:var(--purple-bg);border:1.5px solid var(--purple-br);border-radius:20px;color:var(--purple);font-size:12px;font-weight:700;padding:6px 12px;cursor:pointer;font-family:inherit">
-              ${isAberto?"▲ Ocultar próximas datas":"▼ Ver próximas "+(totalGrupo-1)+" data"+(totalGrupo-1>1?"s":"")}
-            </button>
-          </div>`:""}
+          ${c.desc&&!c.concluido?`<div style="font-size:12px;color:var(--text2);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">${c.desc}</div>`:""}
         </div>`;
       });
     });
@@ -1026,22 +1019,20 @@ function renderAgendaModal(){
 
   document.getElementById("modal").innerHTML=`
     <div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-        <h3 style="margin-bottom:0">🗓️ Agenda do Gerente</h3>
-        <button onclick="cMod()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;font-weight:700">✕</button>
-      </div>
-      <div class="ag-hoje">
-        <div><div class="ag-hoje-data">${hj}</div></div>
-        <div class="ag-hoje-count">${nHoje} hoje</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div>
+          <div style="font-size:16px;font-weight:800;color:var(--text)">Agenda</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:1px">${hj} · ${nHoje} pendente${nHoje!==1?"s":""} hoje</div>
+        </div>
+        <button onclick="cMod()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center">✕</button>
       </div>
       <div class="ag-filtros">
         <button class="ag-filtro${agFiltro==="todos"?" ativo":""}" onclick="agSetFiltro('todos')">Todos</button>
         <button class="ag-filtro${agFiltro==="hoje"?" ativo":""}" onclick="agSetFiltro('hoje')">Hoje</button>
-        <button class="ag-filtro${agFiltro==="semana"?" ativo":""}" onclick="agSetFiltro('semana')">Esta semana</button>
+        <button class="ag-filtro${agFiltro==="proximos7"?" ativo":""}" onclick="agSetFiltro('proximos7')">Próximos 7 dias</button>
         <button class="ag-filtro${agFiltro==="pendente"?" ativo":""}" onclick="agSetFiltro('pendente')">Pendentes</button>
         <button class="ag-filtro${agFiltro==="reuniao"?" ativo":""}" onclick="agSetFiltro('reuniao')">Reuniões</button>
         <button class="ag-filtro${agFiltro==="tarefa"?" ativo":""}" onclick="agSetFiltro('tarefa')">Tarefas</button>
-        <button class="ag-filtro${agFiltro==="lembrete"?" ativo":""}" onclick="agSetFiltro('lembrete')">Lembretes</button>
       </div>
       <div class="ag-lista">${itens}</div>
       <button class="ag-fab" onclick="agNovo()">+ Novo compromisso</button>
@@ -1071,29 +1062,54 @@ function renderAgendaForm(c){
           </button>`).join("")}
         </div>
       </div>
-      <div class="field"><label>Título</label><input type="text" id="ag-titulo" placeholder="Ex: Reunião com fornecedor" value="${c.titulo||""}"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <div class="field"><label>Data</label><input type="date" id="ag-data" value="${c.data||agHoje()}"></div>
-        <div class="field"><label>Horário</label><input type="time" id="ag-hora" value="${c.hora||""}"></div>
+      <div class="field">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Título</label>
+        <input type="text" id="ag-titulo" placeholder="Nome do compromisso..." value="${c.titulo||""}" style="width:100%;font-size:15px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:500">
       </div>
-      <div class="field"><label>Prioridade</label>
-        <select id="ag-prior" class="msel"><option value="normal"${c.prioridade==="normal"?" selected":""}>Normal</option><option value="alta"${c.prioridade==="alta"?" selected":""}>⚡ Urgente</option></select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Data</label>
+          <input type="text" id="ag-data-display" placeholder="DD/MM/AAAA" value="${c.data?agFmtData(c.data):""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit" oninput="agParseData(this.value)">
+          <input type="hidden" id="ag-data" value="${c.data||agHoje()}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Horário</label>
+          <input type="text" id="ag-hora" placeholder="Ex: 10:30" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit">
+        </div>
       </div>
-      <div class="field"><label>Repetir</label>
-        <select id="ag-recor" class="msel">
-          <option value="nunca"${(c.recorrencia||"nunca")==="nunca"?" selected":""}>Não repetir</option>
-          <option value="semanal"${(c.recorrencia||"")==="semanal"?" selected":""}>Toda semana</option>
-          <option value="quinzenal"${(c.recorrencia||"")==="quinzenal"?" selected":""}>A cada 2 semanas</option>
-          <option value="mensal"${(c.recorrencia||"")==="mensal"?" selected":""}>Todo mês</option>
-        </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Prioridade</label>
+          <select id="ag-prior" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+            <option value="normal"${c.prioridade==="normal"?" selected":""}>Normal</option>
+            <option value="alta"${c.prioridade==="alta"?" selected":""}>Urgente</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Repetir</label>
+          <select id="ag-recor" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+            <option value="nunca"${(c.recorrencia||"nunca")==="nunca"?" selected":""}>Não repetir</option>
+            <option value="semanal"${(c.recorrencia||"")==="semanal"?" selected":""}>Toda semana</option>
+            <option value="quinzenal"${(c.recorrencia||"")==="quinzenal"?" selected":""}>Quinzenal</option>
+            <option value="mensal"${(c.recorrencia||"")==="mensal"?" selected":""}>Todo mês</option>
+          </select>
+        </div>
       </div>
-      <div class="field"><label>Observações</label><textarea id="ag-desc" placeholder="Detalhes, local...">${c.desc||""}</textarea></div>
-      <div class="macts"><button onclick="renderAgendaModal()">Cancelar</button><button class="bok" onclick="agSalvar()">Salvar ✓</button></div>
+      <div class="macts"><button onclick="renderAgendaModal()">Cancelar</button><button class="bok" onclick="agSalvar()">Salvar</button></div>
     </div></div>`;
 }
 function agSelTipo(k,titulo,data,hora,prior,desc,recor){
   agTipo=k;
   renderAgendaForm({titulo,data,hora,prioridade:prior,desc,tipo:k,recorrencia:recor||"nunca"});
+}
+function agParseData(val){
+  // aceita DD/MM/AAAA
+  const parts=val.split("/");
+  if(parts.length===3&&parts[2].length===4){
+    const iso=`${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+    const el=document.getElementById("ag-data");
+    if(el) el.value=iso;
+  }
 }
 function agSalvar(){
   const titulo=document.getElementById("ag-titulo").value.trim();
@@ -1141,10 +1157,7 @@ function agSalvar(){
   showToast(msg);
   agEditId=null;
 }
-function agToggleGrupo(grupoId){
-  agGruposAbertos[grupoId]=!agGruposAbertos[grupoId];
-  renderAgendaModal();
-}
+
 function agConcluir(id){const c=AGENDA.find(x=>x.id===id);if(c){c.concluido=true;salvarAgenda();renderAgendaModal();renderEmpty();showToast("✅ Concluído!");}}
 function agReabrir(id){const c=AGENDA.find(x=>x.id===id);if(c){c.concluido=false;salvarAgenda();renderAgendaModal();renderEmpty();showToast("↩ Reaberto");}}
 function agExcluir(id){
