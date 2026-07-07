@@ -932,7 +932,10 @@ let agTipo="tarefa";
 
 function salvarAgenda(){try{localStorage.setItem("bt_agenda",JSON.stringify(AGENDA));}catch(e){}}
 function carregarAgenda(){try{const d=localStorage.getItem("bt_agenda");if(d)AGENDA=JSON.parse(d);}catch(e){}}
-function agHoje(){return new Date().toISOString().split("T")[0];}
+function agHoje(){
+  const d=new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
 function agIsHoje(ds){return ds===agHoje();}
 function agIsSemana(ds){
   const now=new Date(),ini=new Date(now);ini.setDate(now.getDate()-now.getDay());
@@ -941,6 +944,7 @@ function agIsSemana(ds){
 }
 function agFmtData(ds){const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;}
 function agFmtDia(ds){const dt=new Date(ds+"T12:00:00");return DS_SEM[dt.getDay()];}
+function agFmtDiaCompleto(ds){const dt=new Date(ds+"T12:00:00");const[y,m,d]=ds.split("-");return `${DS_SEM[dt.getDay()]}, ${parseInt(d)} de ${MN[parseInt(m)-1]}`;}
 function agGenId(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
 
 function agGetFiltrados(){
@@ -1001,7 +1005,7 @@ function renderAgendaModal(){
   } else {
     Object.keys(grupos).sort().forEach(data=>{
       const isH=agIsHoje(data);
-      itens+=`<div style="font-size:10px;font-weight:800;color:${isH?"var(--blue)":"var(--text3)"};text-transform:uppercase;letter-spacing:.08em;padding:10px 0 5px">${isH?"HOJE":agFmtDia(data).toUpperCase()+" · "+agFmtData(data)}</div>`;
+      itens+=`<div style="font-size:10px;font-weight:800;color:${isH?"var(--blue)":"var(--text3)"};text-transform:uppercase;letter-spacing:.08em;padding:10px 0 5px">${isH?"HOJE":agFmtDiaCompleto(data).toUpperCase()}</div>`;
       grupos[data].forEach(c=>{
         const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
         const isRecor=c.recorrencia&&c.recorrencia!=="nunca";
