@@ -312,7 +312,7 @@ let FOLGAS={6:{
   "Michele":[7,12,14,21,28],"Maria":[5,6,13,20,27],"Tayna (faxina)":[6,13,20,26,27],
 }};
 const FERIAS={6:["Isaías","Fernanda"]};
-let AUSENCIAS={},HISTORICO=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={};
+let AUSENCIAS={},HISTORICO=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
 let cm=6,cy=2026,dSel=null;
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
 
@@ -336,8 +336,8 @@ const FNAT={"2026-01-01":"Ano Novo","2026-02-16":"Carnaval","2026-02-17":"Carnav
 const FMUN={"2026-01-25":"Aniversário SP"};
 const nFer=ds=>FNAT[ds]||FMUN[ds]||"";
 
-function salvarLocal(){try{localStorage.setItem("bt_aus",JSON.stringify(AUSENCIAS));localStorage.setItem("bt_ext",JSON.stringify(EXTRAS));localStorage.setItem("bt_res",JSON.stringify(RES));localStorage.setItem("bt_hist",JSON.stringify(HISTORICO));localStorage.setItem("bt_folgas",JSON.stringify(FOLGAS));localStorage.setItem("bt_fv",JSON.stringify(FOLGAS_VENDIDAS));}catch(e){}}
-function carregarLocal(){try{const a=localStorage.getItem("bt_aus");if(a)AUSENCIAS=JSON.parse(a);const e=localStorage.getItem("bt_ext");if(e)EXTRAS=JSON.parse(e);const r=localStorage.getItem("bt_res");if(r)RES=JSON.parse(r);const h=localStorage.getItem("bt_hist");if(h)HISTORICO=JSON.parse(h);const f=localStorage.getItem("bt_folgas");if(f)FOLGAS=JSON.parse(f);const fv=localStorage.getItem("bt_fv");if(fv)FOLGAS_VENDIDAS=JSON.parse(fv);}catch(e){}}
+function salvarLocal(){try{localStorage.setItem("bt_aus",JSON.stringify(AUSENCIAS));localStorage.setItem("bt_ext",JSON.stringify(EXTRAS));localStorage.setItem("bt_res",JSON.stringify(RES));localStorage.setItem("bt_hist",JSON.stringify(HISTORICO));localStorage.setItem("bt_folgas",JSON.stringify(FOLGAS));localStorage.setItem("bt_fv",JSON.stringify(FOLGAS_VENDIDAS));localStorage.setItem("bt_esc",JSON.stringify(ESCALA_MANUAL));}catch(e){}}
+function carregarLocal(){try{const a=localStorage.getItem("bt_aus");if(a)AUSENCIAS=JSON.parse(a);const e=localStorage.getItem("bt_ext");if(e)EXTRAS=JSON.parse(e);const r=localStorage.getItem("bt_res");if(r)RES=JSON.parse(r);const h=localStorage.getItem("bt_hist");if(h)HISTORICO=JSON.parse(h);const f=localStorage.getItem("bt_folgas");if(f)FOLGAS=JSON.parse(f);const fv=localStorage.getItem("bt_fv");if(fv)FOLGAS_VENDIDAS=JSON.parse(fv);const em=localStorage.getItem("bt_esc");if(em)ESCALA_MANUAL=JSON.parse(em);}catch(e){}}
 
 const dim=m=>new Date(2026,m+1,0).getDate();
 const dnom=(m,d)=>{const dt=new Date(2026,m,d);return DIAS[dt.getDay()===0?6:dt.getDay()-1];};
@@ -395,6 +395,9 @@ function cancelarVendaFolga(nome,d,mi){
 }
 function totalFolgas(d,mi){return Object.values(tFolgas(d,mi)).reduce((s,v)=>s+v.length,0);}
 function getExtras(id,d,mi){return EXTRAS[`${id}_${mi}_${d}`]||[];}
+function getEscalaManual(d,mi){return ESCALA_MANUAL[`${mi}_${d}`]||null;}
+function setEscalaManual(d,mi,dist){ESCALA_MANUAL[`${mi}_${d}`]=dist;salvarLocal();}
+function resetEscalaManual(d,mi){delete ESCALA_MANUAL[`${mi}_${d}`];salvarLocal();}
 function addExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(!EXTRAS[k])EXTRAS[k]=[];if(nome&&!EXTRAS[k].includes(nome)){EXTRAS[k].push(nome);salvarLocal();}}
 function delExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(EXTRAS[k]){EXTRAS[k]=EXTRAS[k].filter(n=>n!==nome);salvarLocal();}}
 
@@ -460,6 +463,123 @@ function renderCal(){
 function selDay(d){
   dSel=d;renderCal();renderEsc(d,cm);
   setTimeout(()=>{const el=document.getElementById("esc");if(el&&window.innerWidth<=620)el.scrollIntoView({behavior:"smooth",block:"start"});},80);
+}
+function openEditarEscala(d,mi){
+  const escManual=getEscalaManual(d,mi);
+  const distAtual=escManual?JSON.parse(JSON.stringify(escManual)):{P01:[],P02:[],P03:[],P04:[]};
+  if(!escManual){
+    const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+    const al=new Set();
+    PD.filter(p=>!p.fch).forEach(p=>{p.gc.forEach(g=>{if(dg.includes(g)&&!al.has(g)){distAtual[p.id].push(g);al.add(g);}});});
+    ["P02","P03","P04","P01"].forEach(pid=>{dg.forEach(g=>{if(!al.has(g)){distAtual[pid].push(g);al.add(g);}});});
+  }
+  renderModalEscala(d,mi,distAtual);
+}
+function getTodosDisponiveis(d,mi){
+  // garçons + toda equipe de suporte disponível no dia
+  const todos=[];
+  Object.keys(EQ).forEach(k=>{
+    EQ[k].m.forEach(g=>{
+      if(!eFolga(g,d,mi)) todos.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
+    });
+  });
+  return todos;
+}
+
+function renderModalEscala(d,mi,dist){
+  // montar lista de todos disponíveis
+  const todosDisp=[];
+  Object.keys(EQ).forEach(k=>{
+    EQ[k].m.forEach(g=>{
+      if(!eFolga(g,d,mi)) todosDisp.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
+    });
+  });
+
+  // praça selecionada para adicionar
+  const pracaSel=window._pracaEditSel||null;
+
+  let h=`<div class="mov" onclick="if(event.target===this){window._pracaEditSel=null;cMod();}"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h3 style="margin-bottom:0">✏️ Editar escala</h3>
+      <button onclick="window._pracaEditSel=null;cMod()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;font-weight:700">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px">Toque em uma praça para adicionar colaboradores.</p>`;
+
+  // lista de alocados
+  const alocados=new Set(Object.values(dist).flat());
+
+  PD.filter(p=>!p.fch).forEach(p=>{
+    const isAberta=pracaSel===p.id;
+    h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:800;color:var(--text)">${p.n} <span style="font-size:10px;color:var(--text3);font-weight:400">Cap. ${p.tl} pax</span></span>
+        <button onclick="window._pracaEditSel='${isAberta?"":p.id}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${isAberta?"8px":"0"}">
+        ${(dist[p.id]||[]).map(g=>{
+          const info=todosDisp.find(x=>x.nome===g);
+          const cor=info?info.cor:"#378ADD";
+          return `<span style="background:${cor}18;border:1px solid ${cor}50;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;color:${cor};display:inline-flex;align-items:center;gap:4px">${g}<button onclick="removerDaPraca('${p.id}','${g}',${d},${mi})" style="background:none;border:none;cursor:pointer;color:${cor};font-size:14px;line-height:1;padding:0">×</button></span>`;
+        }).join("")}
+      </div>
+      ${isAberta?`<div style="border-top:1px solid var(--border);padding-top:8px">
+        ${Object.keys(EQ).map(k=>{
+          const eq=EQ[k];
+          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!(dist[p.id]||[]).includes(g));
+          if(!dispSet.length) return "";
+          return `<div style="margin-bottom:6px">
+            <div style="font-size:10px;font-weight:700;color:${eq.c};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${eq.l}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+              ${dispSet.map(g=>`<button onclick="moverParaPraca('${p.id}','${g}',${d},${mi})" style="background:${eq.c}15;border:1.5px solid ${eq.c}50;border-radius:20px;padding:5px 12px;font-size:12px;color:${eq.c};cursor:pointer;font-weight:600;font-family:inherit">${g}</button>`).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`:""}
+    </div>`;
+  });
+
+  h+=`<div class="macts">
+    <button onclick="window._pracaEditSel=null;cMod()">Cancelar</button>
+    <button class="bok" onclick="window._pracaEditSel=null;salvarEscalaManual(${d},${mi})">Salvar ✓</button>
+  </div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+
+let _distTemp={};
+function getDistBase(d,mi){
+  const dist={P01:[],P02:[],P03:[],P04:[]};
+  const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+  const al=new Set();
+  PD.filter(p=>!p.fch).forEach(p=>{p.gc.forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
+  ["P02","P03","P04","P01"].forEach(pid=>{dg.forEach(g=>{if(!al.has(g)){dist[pid].push(g);al.add(g);}});});
+  return dist;
+}
+function removerDaPraca(pid,nome,d,mi){
+  const escManual=getEscalaManual(d,mi);
+  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
+  if(dist[pid]) dist[pid]=dist[pid].filter(n=>n!==nome);
+  setEscalaManual(d,mi,dist);
+  renderModalEscala(d,mi,dist);
+}
+function moverParaPraca(pid,nome,d,mi){
+  if(!nome) return;
+  const escManual=getEscalaManual(d,mi);
+  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
+  Object.keys(dist).forEach(k=>{dist[k]=dist[k].filter(n=>n!==nome);});
+  if(!dist[pid]) dist[pid]=[];
+  dist[pid].push(nome);
+  setEscalaManual(d,mi,dist);
+  renderModalEscala(d,mi,dist);
+}
+function salvarEscalaManual(d,mi){
+  cMod();renderEsc(d,mi);
+  showToast("✅ Escala do dia atualizada!");
+}
+
+function voltarAgenda(){
+  dSel=null;
+  renderCal();
+  renderEmpty();
 }
 function renderEmpty(){
   const hoje=agHoje();
@@ -528,10 +648,16 @@ function renderEsc(d,mi){
   const folgasHoje=tFolgas(d,mi);
   const totalF=Object.values(folgasHoje).reduce((s,v)=>s+v.length,0);
   const ausencias=AUSENCIAS[`${mi}_${d}`]||[];
-  const dist={P01:[],P02:[],P03:[],P04:[],P05:[],P06:[]};
-  const al=new Set();
-  PD.forEach(p=>{if(p.fch&&oc<0.85)return;p.gc.forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
-  ["P02","P03","P04","P01"].forEach(pid=>{dg.forEach(g=>{if(!al.has(g)){dist[pid].push(g);al.add(g);}});});
+  let dist;
+  const escManual=getEscalaManual(d,mi);
+  if(escManual){
+    dist=escManual;
+  } else {
+    dist={P01:[],P02:[],P03:[],P04:[]};
+    const al=new Set();
+    PD.forEach(p=>{if(p.fch)return;p.gc.forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
+    ["P02","P03","P04","P01"].forEach(pid=>{dg.forEach(g=>{if(!al.has(g)){dist[pid].push(g);al.add(g);}});});
+  }
 
   let h=`<div class="esc">`;
 
@@ -543,6 +669,7 @@ function renderEsc(d,mi){
         ${bdg(stL,stC)}
         ${fer?bdg("🎉 Feriado — 100%","wn"):""}
         ${fchJ?bdg("🔒 Fechado","dn"):""}
+        <button onclick="voltarAgenda()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:var(--rs);color:white;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:inherit;margin-top:2px">🗓️ Agenda</button>
       </div>
     </div>
   </div>`;
@@ -649,7 +776,16 @@ function renderEsc(d,mi){
   }
 
   // PRAÇAS
-  h+=`<div class="sec"><div class="sec-title">Praças</div><div class="cgrid">`;
+  const temManual=!!getEscalaManual(d,mi);
+  h+=`<div class="sec">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="sec-title" style="margin-bottom:0">Praças</div>
+      <div style="display:flex;gap:6px">
+        ${temManual?`<button onclick="resetEscalaManual(${d},${mi});renderEsc(${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↩ Resetar</button>`:""}
+        <button onclick="openEditarEscala(${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">✏️ Editar</button>
+      </div>
+    </div>
+    <div class="cgrid">`;
   PD.forEach(p=>{
     const gl=dist[p.id]||[],isFch=p.fch&&oc<0.85;
     const ppx=Math.round(pax*(p.tl/CAA)),mp=Math.round(p.tm*Math.min(1,oc)),nx=gl.length===0;
