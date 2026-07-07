@@ -324,11 +324,18 @@ const EQ={
   boqc:   {l:"Boqueta Comida",e:"🍲",c:"#8B6000",min:1,m:["Emanuela","Jovana"]},
   fax:    {l:"Faxina",e:"🧹",c:"#4A4A4A",min:2,m:["Michele","Maria","Tayna (faxina)"]},
 };
+// Horários especiais de entrada (dias úteis apenas)
+const HORARIOS={
+  "Vanderlei":{hora:"15:00",dias:["Segunda","Terça","Quarta","Quinta","Sexta"]},
+  "Maya":{hora:"15:00",dias:["Segunda","Terça","Quarta","Quinta","Sexta"]},
+};
+
 const PD=[
   {id:"P01",n:"Praça 01",pref:false,fch:false,gc:["Daniel","Corinto","Isaías"],mesas:"140 a 194",tm:55,tl:62},
   {id:"P02",n:"Praça 02",pref:true, fch:false,gc:["Viviana","Leyla"],mesas:"100-107 · 01-11 · 60-63",tm:23,tl:64},
   {id:"P03",n:"Praça 03",pref:true, fch:false,gc:["Vanderlei","Vinicius","Jose"],mesas:"12-27 · 30 · 300 · 64-65",tm:20,tl:56},
   {id:"P04",n:"Praça 04",pref:false,fch:false,gc:["Maya","Antonio"],mesas:"200-264 · 301-302",tm:67,tl:110},
+  {id:"P05",n:"Praça Espera",pref:false,fch:false,gc:[],mesas:"Fins de semana",tm:0,tl:0,fimSemana:true},
 ];
 const CAA=PD.filter(p=>!p.fch).reduce((s,p)=>s+p.tl,0);
 const MAA=PD.filter(p=>!p.fch).reduce((s,p)=>s+p.tm,0);
@@ -441,10 +448,8 @@ function renderCal(){
       <span class="cn" style="color:${numColor}">${d}</span>
       ${isH&&!isSel?`<span class="cl" style="color:var(--blue);font-weight:800;font-size:8px">HOJE</span>`:""}
       ${fer&&!isSel?`<span class="cl" style="color:var(--yellow)">${fer.slice(0,4)}</span>`:""}
-      ${aus>0?`<span class="cl" style="color:${isSel?"rgba(255,255,255,.9)":"var(--red)"}">!${aus}</span>`:""}
-      ${res>0?`<span class="cl" style="color:${isSel?"rgba(255,255,255,.85)":"var(--gold)"}">${res}r</span>`:""}
       <div class="cb" style="background:${isSel?"rgba(255,255,255,.2)":"var(--border)"}"><div class="cf" style="background:${isSel?"white":ocColor};width:${ocp}%"></div></div>
-      ${nf>0?`<span class="cl" style="color:${isSel?"rgba(255,255,255,.65)":"var(--text3)"}">${nf}f</span>`:""}
+      ${nf>0?`<span style="font-size:11px;font-weight:800;color:${isSel?"rgba(255,255,255,.85)":"var(--text2)"};line-height:1">${nf}f</span>`:""}
     </div>`;
   }
   h+=`</div><div class="leg">
@@ -487,6 +492,9 @@ function getTodosDisponiveis(d,mi){
 }
 
 function renderModalEscala(d,mi,dist){
+  const _dn=dnom(mi,d),_ds=ds2s(mi,d),_fer=nFer(_ds);
+  const _isDom=_dn==="Domingo",_isSab=_dn==="Sábado";
+  const isSabDomFer=_isDom||_isSab||!!_fer;
   // montar lista de todos disponíveis
   const todosDisp=[];
   Object.keys(EQ).forEach(k=>{
@@ -508,7 +516,7 @@ function renderModalEscala(d,mi,dist){
   // lista de alocados
   const alocados=new Set(Object.values(dist).flat());
 
-  PD.filter(p=>!p.fch).forEach(p=>{
+  PD.filter(p=>!p.fch&&(!p.fimSemana||isSabDomFer)).forEach(p=>{
     const isAberta=pracaSel===p.id;
     h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -787,6 +795,8 @@ function renderEsc(d,mi){
     </div>
     <div class="cgrid">`;
   PD.forEach(p=>{
+    const _isSabDomFer=dn==="Sábado"||isDom||!!fer;
+    if(p.fimSemana&&!_isSabDomFer) return;
     const gl=dist[p.id]||[],isFch=p.fch&&oc<0.85;
     const ppx=Math.round(pax*(p.tl/CAA)),mp=Math.round(p.tm*Math.min(1,oc)),nx=gl.length===0;
     const extras=getExtras(p.id,d,mi);
@@ -794,7 +804,20 @@ function renderEsc(d,mi){
     h+=`<div class="pc${p.pref?" pp":nx&&extras.length===0?" px":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span>${p.pref?bdg("pref","in"):""}</div>
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
-      <div>${gl.map(g=>chip(g,EQ.garcons.c)).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${p.id}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
+      <div>${gl.map(g=>{
+        const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
+        const cor=sk?EQ[sk].c:EQ.garcons.c;
+        const isGarcom=sk==="garcons";
+        const horInfo=HORARIOS[g];
+        const temHorario=horInfo&&horInfo.dias.includes(dn);
+        if(!isGarcom&&sk){
+          return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
+        }
+        if(temHorario){
+          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">⏰ a partir das ${horInfo.hora}</span></span>`;
+        }
+        return chip(g,cor);
+      }).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${p.id}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
       <div class="extra-input-wrap"><input type="text" placeholder="+ extra..." id="ei-${p.id}" onkeydown="if(event.key==='Enter'){addExtra('${p.id}',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('${p.id}',${d},${mi},document.getElementById('ei-${p.id}').value.trim());renderEsc(${d},${mi})">+</button></div>
       </div>
     </div>`;
@@ -802,6 +825,12 @@ function renderEsc(d,mi){
   h+=`</div></div>`;
 
   // SUPORTE
+  // pegar todos alocados nas praças (escala manual inclui suporte)
+  const escManualCompleta=getEscalaManual(d,mi)||{};
+  const alocadosNasPracas=new Set([
+    ...Object.values(dist).flat(),
+    ...Object.values(escManualCompleta).flat()
+  ]);
   h+=`<div class="sec"><div class="sec-title">Suporte</div><div class="cgrid">`;
   // Esterilização — sábados, domingos e feriados, sempre extra
   const isSabDomFer=dn==="Sábado"||isDomOuFer;
@@ -820,7 +849,10 @@ function renderEsc(d,mi){
     </div>`;
   }
   [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([k,l])=>{
-    const eq=EQ[k],disp=gDisp(d,mi,k),nx=disp.length<eq.min;
+    const eq=EQ[k];
+    // excluir quem foi alocado manualmente nas praças
+    const disp=gDisp(d,mi,k).filter(g=>!alocadosNasPracas.has(g));
+    const nx=disp.length<eq.min;
     const extras=getExtras(k,d,mi);
     h+=`<div class="pc${nx&&extras.length===0?" px":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
