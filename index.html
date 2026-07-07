@@ -809,7 +809,7 @@ function renderEsc(d,mi){
         const cor=sk?EQ[sk].c:EQ.garcons.c;
         const isGarcom=sk==="garcons";
         const horInfo=HORARIOS[g];
-        const temHorario=horInfo&&horInfo.dias.includes(dn);
+        const temHorario=horInfo&&horInfo.dias.includes(dn)&&!fer;
         if(!isGarcom&&sk){
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
