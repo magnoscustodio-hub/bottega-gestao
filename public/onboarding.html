@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GestãoSalão — Cadastro</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F0EDE8;--surface:#FFFFFF;--surface2:#F7F4F0;
+  --border:#E8E2DA;--border-s:#D4CBC0;
+  --text:#1A1410;--text2:#6B5F52;--text3:#A89880;
+  --accent:#1A1410;
+  --success:#1A6B3C;--suc-bg:#E8F5EE;--suc-br:#A8D8BC;
+  --danger:#B02020;--dan-bg:#FEF0EE;--dan-br:#E8A8A0;
+  --gold:#B5893A;--gold-bg:#FBF4E8;--gold-br:#E8D4A0;
+  --r:14px;--rs:10px;
+  --shadow:0 2px 8px rgba(0,0,0,.08);--shadow-md:0 4px 16px rgba(0,0,0,.12);
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased}
+.app{max-width:480px;margin:0 auto;width:100%;padding:20px;flex:1;display:flex;flex-direction:column}
+
+.prog-wrap{margin-bottom:24px}
+.prog-lbl{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;display:flex;justify-content:space-between}
+.prog-bar{background:var(--border);border-radius:4px;height:5px}
+.prog-fill{height:5px;border-radius:4px;background:var(--accent);transition:width .4s}
+
+.screen{display:none;flex-direction:column;flex:1}
+.screen.active{display:flex}
+.screen h2{font-size:24px;font-weight:800;letter-spacing:-.5px;line-height:1.2;margin-bottom:8px}
+.desc{font-size:15px;color:var(--text2);line-height:1.5;margin-bottom:20px}
+
+input[type=text],input[type=number]{width:100%;font-size:16px;padding:13px 15px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;-webkit-appearance:none;box-shadow:var(--shadow)}
+input:focus{outline:none;border-color:var(--accent)}
+input::placeholder{color:var(--text3)}
+.field-group{margin-bottom:16px}
+.field-label{font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;display:block}
+
+.day-head{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.day-emo{font-size:26px}
+.day-head h3{font-size:20px;font-weight:800;letter-spacing:-.3px}
+.day-head p{font-size:13px;color:var(--text2);margin-top:2px}
+.turno-block{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px;box-shadow:var(--shadow)}
+.turno-lbl{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.big-input{font-size:28px!important;font-weight:800!important;text-align:center;padding:16px!important}
+
+/* SETORES */
+.setor-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px;box-shadow:var(--shadow)}
+.setor-nm{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:700;margin-bottom:10px}
+.sdot{width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0}
+.qty-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.qty-row label{font-size:13px;color:var(--text2)}
+.qty-ctrl{display:flex;align-items:center;gap:4px}
+.qty-btn{width:38px;height:38px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:700;-webkit-tap-highlight-color:transparent}
+.qty-btn:active{background:var(--border)}
+.qty-v{width:44px;text-align:center;font-size:20px;font-weight:800;color:var(--text)}
+
+/* PRAÇAS */
+.praca-card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:10px;box-shadow:var(--shadow)}
+.praca-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.praca-nm-input{font-size:15px;font-weight:700;border:none;background:transparent;color:var(--text);font-family:inherit;flex:1;padding:0}
+.praca-nm-input:focus{outline:none}
+.praca-nm-input::placeholder{color:var(--text3);font-weight:400}
+.praca-remove{width:28px;height:28px;border-radius:50%;border:1px solid var(--dan-br);background:var(--dan-bg);color:var(--danger);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;flex-shrink:0}
+.praca-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.praca-field label{font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px}
+.praca-field input{width:100%;font-size:16px;font-weight:700;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface2);color:var(--text);font-family:inherit;text-align:center}
+.praca-field input:focus{outline:none;border-color:var(--accent)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)}
+.toggle-row label{font-size:13px;color:var(--text2)}
+.toggle{width:44px;height:26px;border-radius:13px;background:var(--border);cursor:pointer;position:relative;transition:background .2s;-webkit-tap-highlight-color:transparent;flex-shrink:0}
+.toggle.on{background:var(--accent)}
+.toggle::after{content:"";position:absolute;width:20px;height:20px;border-radius:50%;background:white;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle.on::after{left:21px}
+.add-praca-btn{width:100%;padding:14px;border-radius:var(--r);border:1.5px dashed var(--border-s);background:transparent;color:var(--text2);font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;margin-bottom:8px}
+.add-praca-btn:active{background:var(--surface2)}
+
+/* FOLGAS */
+.setor-list{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.setor-item{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow)}
+.setor-item-hd{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.setor-item-hd:active{background:var(--surface2)}
+.setor-item-left{display:flex;align-items:center;gap:10px}
+.setor-item-nm{font-size:15px;font-weight:700}
+.setor-item-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.setor-item-arr{font-size:20px;color:var(--text3);transition:transform .2s}
+.setor-item-arr.open{transform:rotate(90deg)}
+.setor-item-body{display:none;border-top:1px solid var(--border)}
+.setor-item-body.open{display:block}
+.func-list{padding:10px}
+.func-btn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 14px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface2);margin-bottom:6px;cursor:pointer;font-family:inherit;font-size:14px;font-weight:600;color:var(--text);-webkit-tap-highlight-color:transparent;text-align:left}
+.func-btn:last-child{margin-bottom:0}
+.func-btn:active{background:var(--border)}
+.func-folga-count{font-size:12px;color:var(--text3);font-weight:400}
+.func-folga-count.has-folgas{color:var(--success);font-weight:600}
+
+/* CALENDÁRIO MODAL */
+.cal-modal-ov{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:999;display:flex;align-items:flex-end;justify-content:center}
+.cal-modal-box{background:var(--surface);border-radius:var(--r) var(--r) 0 0;padding:20px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto}
+.cal-modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-modal-hd h3{font-size:17px;font-weight:800}
+.cal-modal-close{width:32px;height:32px;border-radius:50%;border:1.5px solid var(--border);background:var(--surface2);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:12px}
+.cal-dh{font-size:10px;font-weight:700;color:var(--text3);text-align:center;padding:4px 0;text-transform:uppercase}
+.cal-d{border-radius:8px;min-height:40px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;cursor:pointer;border:1.5px solid transparent;-webkit-tap-highlight-color:transparent;transition:all .1s}
+.cal-d:active{transform:scale(.88)}
+.cal-d.sel{background:var(--accent);color:white}
+.cal-d.dom{color:#B02020}
+.cal-d.sab{color:#B5893A}
+.cal-d.emp{opacity:0;pointer-events:none}
+.cal-resumo{border-radius:var(--rs);padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.cal-resumo.has{background:var(--suc-bg);color:var(--success)}
+.cal-resumo.empty{background:var(--surface2);color:var(--text3);font-weight:400}
+.btn-cal-ok{width:100%;padding:13px;border-radius:var(--rs);border:none;background:var(--accent);color:white;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+
+.btn-wrap{margin-top:auto;padding-top:20px}
+.btn{width:100%;padding:16px;border-radius:var(--r);border:none;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent;transition:opacity .15s;box-shadow:var(--shadow-md)}
+.btn:active{opacity:.8}
+.btn-primary{background:var(--accent);color:white}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1.5px solid var(--border);margin-top:10px;box-shadow:none}
+.btn-success{background:var(--success);color:white}
+
+.steps{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
+.step{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;box-shadow:var(--shadow)}
+.step-ico{font-size:20px;flex-shrink:0}
+.step-txt strong{color:var(--text);display:block;font-size:14px;margin-bottom:1px}
+.step-txt span{font-size:13px;color:var(--text2)}
+
+.success-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
+.success-card h4{font-size:11px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+.srow{display:flex;justify-content:space-between;font-size:14px;padding:6px 0;border-bottom:1px solid var(--border)}
+.srow:last-child{border-bottom:none}
+.srow span:last-child{font-weight:700;text-align:right;max-width:60%}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="prog-wrap" id="pw" style="display:none">
+    <div class="prog-lbl"><span id="pl">Passo 1 de 5</span><span id="ps" style="color:var(--text3)"></span></div>
+    <div class="prog-bar"><div class="prog-fill" id="pf" style="width:20%"></div></div>
+  </div>
+
+  <!-- S0: BOAS VINDAS -->
+  <div class="screen active" id="s0">
+    <div style="font-size:44px;margin-bottom:16px">🍽️</div>
+    <h2>Bem-vindo ao GestãoSalão!</h2>
+    <p class="desc">Configure seu restaurante em poucos minutos e tenha a escala pronta hoje.</p>
+    <div class="steps">
+      <div class="step"><div class="step-ico">📊</div><div class="step-txt"><strong>Movimento diário</strong><span>Média de clientes por turno</span></div></div>
+      <div class="step"><div class="step-ico">👥</div><div class="step-txt"><strong>Sua equipe</strong><span>Funcionários por setor</span></div></div>
+      <div class="step"><div class="step-ico">🔒</div><div class="step-txt"><strong>Dias de funcionamento</strong><span>Quais dias o restaurante abre</span></div></div>
+      <div class="step"><div class="step-ico">🗺️</div><div class="step-txt"><strong>Espaço físico</strong><span>Praças, mesas e capacidade</span></div></div>
+      <div class="step"><div class="step-ico">📅</div><div class="step-txt"><strong>Folgas do mês</strong><span>Calendário por funcionário</span></div></div>
+    </div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(1)">Começar agora →</button>
+    </div>
+  </div>
+
+  <!-- S1: RESTAURANTE -->
+  <div class="screen" id="s1">
+    <h2>Seu restaurante</h2>
+    <p class="desc">Como se chama e onde fica?</p>
+    <div class="field-group">
+      <label class="field-label">Nome do restaurante</label>
+      <input type="text" id="inp-nome" placeholder="Ex: Trattoria del Marco" autocomplete="off">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Cidade</label>
+      <input type="text" id="inp-cidade" placeholder="Ex: São Paulo" autocomplete="off">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Seu e-mail (login do dono)</label>
+      <input type="text" id="inp-email" placeholder="voce@restaurante.com" autocomplete="email">
+    </div>
+    <div class="field-group">
+      <label class="field-label">Crie uma senha</label>
+      <input type="password" id="inp-senha" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+    </div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="saveRestaurante()">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(0)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S2-S8: DIAS -->
+  <div class="screen" id="s2"><div id="dc0"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(0)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(1)">← Voltar</button></div></div>
+  <div class="screen" id="s3"><div id="dc1"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(1)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(2)">← Voltar</button></div></div>
+  <div class="screen" id="s4"><div id="dc2"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(2)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(3)">← Voltar</button></div></div>
+  <div class="screen" id="s5"><div id="dc3"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(3)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(4)">← Voltar</button></div></div>
+  <div class="screen" id="s6"><div id="dc4"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(4)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(5)">← Voltar</button></div></div>
+  <div class="screen" id="s7"><div id="dc5"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(5)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(6)">← Voltar</button></div></div>
+  <div class="screen" id="s8"><div id="dc6"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(6,9)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(7)">← Voltar</button></div></div>
+
+  <!-- S9: EQUIPE -->
+  <div class="screen" id="s9">
+    <h2>Sua equipe 👥</h2>
+    <p class="desc">Quantos funcionários por setor? Adicione setores personalizados se precisar.</p>
+    <div id="eq-cards"></div>
+    <button class="add-praca-btn" onclick="addSetorExtra()" style="margin-top:4px">+ Adicionar setor ou função</button>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(10)">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(8)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S10: NOMES -->
+  <div class="screen" id="s10">
+    <h2>Nomes da equipe 📋</h2>
+    <p class="desc">Digite os nomes separados por vírgula.</p>
+    <div id="nm-cards"></div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(11)">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(9)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S11: DIAS DE FUNCIONAMENTO -->
+  <div class="screen" id="s11">
+    <h2>Dias de funcionamento 🔒</h2>
+    <p class="desc">Marque os dias em que o restaurante <strong>não</strong> funciona.</p>
+    <div id="dias-fechado"></div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(12)">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(10)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S12: ESPAÇO FÍSICO -->
+  <div class="screen" id="s12">
+    <h2>Espaço físico 🗺️</h2>
+    <p class="desc">Configure as praças do seu salão — nome, mesas, capacidade e quando abre.</p>
+    <div id="pracas-list"></div>
+    <button class="add-praca-btn" onclick="addPraca()">+ Adicionar praça</button>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(13)">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(11)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S13: FOLGAS -->
+  <div class="screen" id="s13">
+    <h2>Folgas do mês 📅</h2>
+    <p class="desc">Selecione o setor e toque no funcionário para marcar as folgas.</p>
+    <div class="setor-list" id="folga-setores"></div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(14)">Finalizar →</button>
+      <button class="btn btn-secondary" onclick="goTo(12)">← Voltar</button>
+    </div>
+  </div>
+
+  <!-- S14: SUCESSO -->
+  <div class="screen" id="s14">
+    <div style="font-size:52px;text-align:center;margin-bottom:16px">🎉</div>
+    <h2>Tudo pronto!</h2>
+    <p class="desc">Seu restaurante está configurado. A escala já está disponível.</p>
+    <div class="success-card" id="resumo"></div>
+    <p class="auth-error" id="erro-finalizar" style="display:none;color:var(--danger);font-size:13px;margin-bottom:10px;text-align:center"></p>
+    <div class="btn-wrap">
+      <button class="btn btn-success" id="btn-finalizar" onclick="finalizarCadastro()">Ver escala do mês →</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CALENDÁRIO -->
+<div id="cal-modal" style="display:none" class="cal-modal-ov" onclick="if(event.target===this)closeCal()">
+  <div class="cal-modal-box">
+    <div class="cal-modal-hd">
+      <h3 id="cal-func-nome">Folgas</h3>
+      <button class="cal-modal-close" onclick="closeCal()">✕</button>
+    </div>
+    <div id="cal-resumo-box"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <button onclick="mudaMes(-1)" style="padding:6px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:16px">‹</button>
+      <span id="cal-mes-titulo" style="font-size:14px;font-weight:700"></span>
+      <button onclick="mudaMes(1)" style="padding:6px 14px;border-radius:8px;border:1.5px solid var(--border);background:var(--surface2);cursor:pointer;font-size:16px">›</button>
+    </div>
+    <div class="cal-grid" id="cal-grid-modal"></div>
+    <button class="btn-cal-ok" onclick="closeCal()">Confirmar folgas ✓</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const supabaseClient = window.supabase.createClient(
+  'https://ufsdmlyrbkvgrlemvzde.supabase.co',
+  'sb_publishable_ylatUIjLh_w05QXuW0ORYQ_adC3-mvp'
+);
+
+const DIAS=[
+  {n:'Segunda-feira',e:'📅',a:'Seg',j:true},
+  {n:'Terça-feira',e:'📅',a:'Ter',j:true},
+  {n:'Quarta-feira',e:'📅',a:'Qua',j:true},
+  {n:'Quinta-feira',e:'📅',a:'Qui',j:true},
+  {n:'Sexta-feira',e:'🍻',a:'Sex',j:true},
+  {n:'Sábado',e:'⭐',a:'Sáb',j:true},
+  {n:'Domingo',e:'🌅',a:'Dom',j:false},
+];
+const SETORES=[
+  {k:'garcons',n:'Garçons',e:'🍽️',c:'#378ADD'},
+  {k:'bar',n:'Bar',e:'🍹',c:'#D85A30'},
+  {k:'rec',n:'Recepção',e:'🤝',c:'#D4537E'},
+  {k:'boqb',n:'Boqueta Bebida',e:'🥂',c:'#7C3AED'},
+  {k:'boqc',n:'Boqueta Comida',e:'🍲',c:'#BA7517'},
+  {k:'fax',n:'Faxina',e:'🧹',c:'#888780'},
+];
+const MESES_NM=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+let D={
+  nome:'',
+  cidade:'',
+  donoEmail:'',
+  donoSenha:'',
+  pax:{
+    Seg:{a:0,j:0},Ter:{a:0,j:0},Qua:{a:0,j:0},
+    Qui:{a:0,j:0},Sex:{a:0,j:0},Sáb:{a:0,j:0},Dom:{a:0,j:0}
+  },
+  equipe:{},
+  nomes:{},
+  folgas:{},
+  pracas:[],
+  diasFechado:[],
+  setoresExtra:[]
+};
+SETORES.forEach(s=>{D.equipe[s.k]=0;D.nomes[s.k]='';});
+
+let calFunc=null,calMes=new Date().getMonth(),calAno=new Date().getFullYear();
+let setoresAbertos={};
+
+const PROG_STEPS={0:null,1:1,2:1,3:1,4:1,5:1,6:1,7:1,8:1,9:2,10:2,11:3,12:4,13:5,14:6};
+const PROG_LABELS={1:'Movimento',2:'Equipe',3:'Funcionamento',4:'Espaço físico',5:'Folgas',6:'Concluído'};
+
+function goTo(n){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('s'+n).classList.add('active');
+  const p=PROG_STEPS[n];
+  const pw=document.getElementById('pw');
+  if(!p){pw.style.display='none';}
+  else{
+    pw.style.display='block';
+    document.getElementById('pl').textContent='Passo '+p+' de 6';
+    document.getElementById('ps').textContent=PROG_LABELS[p]||'';
+    document.getElementById('pf').style.width=(p/6*100)+'%';
+  }
+  window.scrollTo(0,0);
+  if(n>=2&&n<=8) renderDay(n-2);
+  if(n===9) renderEquipe();
+  if(n===10) renderNomes();
+  if(n===11) renderDiasFechado();
+  if(n===12) renderPracas();
+  if(n===13) renderFolgaSetores();
+  if(n===14) renderResumo();
+}
+
+function saveRestaurante(){
+  D.nome=document.getElementById('inp-nome').value.trim();
+  D.cidade=document.getElementById('inp-cidade').value.trim();
+  D.donoEmail=document.getElementById('inp-email').value.trim();
+  D.donoSenha=document.getElementById('inp-senha').value;
+
+  if(!D.nome){ alert('Digite o nome do restaurante.'); return; }
+  if(!D.donoEmail){ alert('Digite seu e-mail.'); return; }
+  if(D.donoSenha.length<6){ alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
+
+  goTo(2);
+}
+
+function savDay(idx,next){
+  const a=parseInt(document.getElementById('alm-'+idx)?.value)||0;
+  const j=parseInt(document.getElementById('jan-'+idx)?.value)||0;
+  D.pax[DIAS[idx].a]={a,j:DIAS[idx].j?j:0};
+  goTo(next!==undefined?next:idx+3);
+}
+
+function renderDay(idx){
+  const d=DIAS[idx];
+  const sa=D.pax[d.a]?.a||'';
+  const sj=D.pax[d.a]?.j||'';
+  let h=`<div class="day-head"><div class="day-emo">${d.e}</div><div><h3>${d.n}</h3><p>Média de clientes</p></div></div>`;
+  h+=`<div class="turno-block"><div class="turno-lbl">☀️ Almoço</div><input class="big-input" type="number" id="alm-${idx}" inputmode="numeric" placeholder="0" value="${sa}"></div>`;
+  if(d.j){
+    h+=`<div class="turno-block"><div class="turno-lbl">🌙 Jantar</div><input class="big-input" type="number" id="jan-${idx}" inputmode="numeric" placeholder="0" value="${sj}"></div>`;
+  } else {
+    h+=`<div style="background:var(--surface2);border-radius:12px;padding:16px;text-align:center;font-size:13px;color:#6B6860">🔒 Fechado no jantar</div>`;
+  }
+  document.getElementById('dc'+idx).innerHTML=h;
+}
+
+function renderEquipe(){
+  let h='';
+  SETORES.forEach(s=>{
+    const v=D.equipe[s.k];
+    h+=`<div class="setor-card">
+      <div class="setor-nm"><span class="sdot" style="background:${s.c}"></span>${s.e} ${s.n}</div>
+      <div class="qty-row"><label>Funcionários</label>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="chQty('${s.k}',-1)">−</button>
+          <span class="qty-v" id="qty-${s.k}">${v}</span>
+          <button class="qty-btn" onclick="chQty('${s.k}',1)">+</button>
+        </div>
+      </div>
+    </div>`;
+  });
+  // setores extras
+  D.setoresExtra.forEach((s,i)=>{
+    h+=`<div class="setor-card" style="border-color:${s.cor}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div class="setor-nm">
+          <span class="sdot" style="background:${s.cor}"></span>
+          <input type="text" value="${s.nome}" placeholder="Nome do setor" oninput="D.setoresExtra[${i}].nome=this.value" style="border:none;background:transparent;font-size:15px;font-weight:700;font-family:inherit;color:var(--text);padding:0;width:100%">
+        </div>
+        <button onclick="removeSetorExtra(${i})" style="width:26px;height:26px;border-radius:50%;border:1px solid var(--dan-br);background:var(--dan-bg);color:var(--danger);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>
+      </div>
+      <div class="qty-row"><label>Funcionários</label>
+        <div class="qty-ctrl">
+          <button class="qty-btn" onclick="chQtyExtra(${i},-1)">−</button>
+          <span class="qty-v" id="qty-extra-${i}">${s.qtd}</span>
+          <button class="qty-btn" onclick="chQtyExtra(${i},1)">+</button>
+        </div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('eq-cards').innerHTML=h;
+}
+
+const CORES_EXTRA=['#2A8B6A','#E67E22','#8E44AD','#16A085','#C0392B','#2980B9','#F39C12'];
+function addSetorExtra(){
+  const cor=CORES_EXTRA[D.setoresExtra.length%CORES_EXTRA.length];
+  D.setoresExtra.push({nome:'',cor,qtd:0,nomes:''});
+  renderEquipe();
+  // scroll to bottom
+  setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),100);
+}
+function removeSetorExtra(i){D.setoresExtra.splice(i,1);renderEquipe();}
+function chQtyExtra(i,d){D.setoresExtra[i].qtd=Math.max(0,D.setoresExtra[i].qtd+d);document.getElementById('qty-extra-'+i).textContent=D.setoresExtra[i].qtd;}
+
+function chQty(k,d){D.equipe[k]=Math.max(0,(D.equipe[k]||0)+d);document.getElementById('qty-'+k).textContent=D.equipe[k];}
+
+function renderNomes(){
+  let h='';
+  SETORES.forEach(s=>{
+    if(D.equipe[s.k]===0) return;
+    const v=D.nomes[s.k]||'';
+    h+=`<div class="setor-card">
+      <div class="setor-nm"><span class="sdot" style="background:${s.c}"></span>${s.e} ${s.n} <span style="font-size:12px;color:#A09D96;margin-left:auto">${D.equipe[s.k]} pessoa${D.equipe[s.k]!==1?'s':''}</span></div>
+      <input type="text" placeholder="Ex: João, Maria, Pedro" value="${v}" oninput="D.nomes['${s.k}']=this.value">
+    </div>`;
+  });
+  // setores extras
+  D.setoresExtra.forEach((s,i)=>{
+    if(s.qtd===0) return;
+    h+=`<div class="setor-card" style="border-color:${s.cor}">
+      <div class="setor-nm"><span class="sdot" style="background:${s.cor}"></span>${s.nome||'Setor '+( i+1)} <span style="font-size:12px;color:#A09D96;margin-left:auto">${s.qtd} pessoa${s.qtd!==1?'s':''}</span></div>
+      <input type="text" placeholder="Ex: João, Maria, Pedro" value="${s.nomes||''}" oninput="D.setoresExtra[${i}].nomes=this.value">
+    </div>`;
+  });
+  document.getElementById('nm-cards').innerHTML=h;
+}
+
+// DIAS FECHADO
+const DIAS_SEMANA_NOMES=[
+  {k:'Segunda',n:'Segunda-feira',e:'📅'},
+  {k:'Terça',n:'Terça-feira',e:'📅'},
+  {k:'Quarta',n:'Quarta-feira',e:'📅'},
+  {k:'Quinta',n:'Quinta-feira',e:'📅'},
+  {k:'Sexta',n:'Sexta-feira',e:'🍻'},
+  {k:'Sábado',n:'Sábado',e:'⭐'},
+  {k:'Domingo',n:'Domingo',e:'🌅'},
+];
+function getDiaFechado(k){return D.diasFechado.find(x=>x.dia===k)||null;}
+
+function renderDiasFechado(){
+  let h='';
+  DIAS_SEMANA_NOMES.forEach(d=>{
+    const obj=getDiaFechado(d.k);
+    const fechado=!!obj;
+    const turno=obj?obj.turno:'todos';
+    h+=`<div style="background:var(--surface);border:1.5px solid ${fechado?'var(--danger)':'var(--border)'};border-radius:var(--rs);margin-bottom:8px;overflow:hidden;box-shadow:var(--shadow)">
+      <div onclick="toggleDiaFechado('${d.k}')" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">${d.e}</span>
+          <span style="font-size:15px;font-weight:600;color:${fechado?'var(--danger)':'var(--text)'}">${d.n}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${fechado?`<span style="font-size:11px;font-weight:700;color:var(--danger);background:var(--dan-bg);border-radius:20px;padding:2px 10px">Fechado</span>`:`<span style="font-size:11px;color:var(--text3)">Aberto</span>`}
+          <div style="width:22px;height:22px;border-radius:50%;border:1.5px solid ${fechado?'var(--danger)':'var(--border)'};background:${fechado?'var(--danger)':'transparent'};display:flex;align-items:center;justify-content:center;color:white;font-size:13px">${fechado?'✓':''}</div>
+        </div>
+      </div>
+      ${fechado?`<div style="border-top:1px solid var(--dan-br);background:var(--dan-bg);padding:10px 16px;display:flex;gap:8px">
+        <span style="font-size:12px;color:var(--danger);font-weight:600;align-self:center">Fecha:</span>
+        ${[['todos','Dia todo'],['almoco','Só almoço'],['jantar','Só jantar']].map(([v,l])=>`
+          <button onclick="setTurnoFechado('${d.k}','${v}')" style="padding:5px 12px;border-radius:20px;border:1.5px solid ${turno===v?'var(--danger)':'var(--dan-br)'};background:${turno===v?'var(--danger)':'transparent'};color:${turno===v?'white':'var(--danger)'};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${l}</button>
+        `).join('')}
+      </div>`:''}
+    </div>`;
+  });
+  h+=`<p style="font-size:12px;color:var(--text3);text-align:center;margin-top:8px">Não selecionado = aberto nesse dia</p>`;
+  document.getElementById('dias-fechado').innerHTML=h;
+}
+
+function toggleDiaFechado(k){
+  const idx=D.diasFechado.findIndex(x=>x.dia===k);
+  if(idx>=0) D.diasFechado.splice(idx,1);
+  else D.diasFechado.push({dia:k,turno:'todos'});
+  renderDiasFechado();
+}
+function setTurnoFechado(k,turno){
+  const obj=D.diasFechado.find(x=>x.dia===k);
+  if(obj) obj.turno=turno;
+  renderDiasFechado();
+}
+
+// PRAÇAS
+function addPraca(){
+  D.pracas.push({id:'P'+(D.pracas.length+1),nome:'Praça '+(D.pracas.length+1),mesas:0,lugares:0,fimSemana:false});
+  renderPracas();
+}
+
+function removePraca(idx){
+  D.pracas.splice(idx,1);
+  renderPracas();
+}
+
+function toggleFimSemana(idx){
+  D.pracas[idx].fimSemana=!D.pracas[idx].fimSemana;
+  const el=document.getElementById('toggle-'+idx);
+  if(el) el.classList.toggle('on');
+}
+
+function renderPracas(){
+  // inicializar com 2 praças padrão se vazio
+  if(D.pracas.length===0){
+    D.pracas=[
+      {id:'P1',nome:'Praça 01',mesas:0,lugares:0,fimSemana:false},
+      {id:'P2',nome:'Praça 02',mesas:0,lugares:0,fimSemana:false},
+    ];
+  }
+  let h='';
+  D.pracas.forEach((p,i)=>{
+    h+=`<div class="praca-card">
+      <div class="praca-hd">
+        <input class="praca-nm-input" type="text" placeholder="Nome da praça" value="${p.nome}" oninput="D.pracas[${i}].nome=this.value">
+        <button class="praca-remove" onclick="removePraca(${i})">×</button>
+      </div>
+      <div class="praca-fields">
+        <div class="praca-field">
+          <label>Nº de mesas</label>
+          <input type="number" inputmode="numeric" placeholder="0" value="${p.mesas||''}" oninput="D.pracas[${i}].mesas=parseInt(this.value)||0">
+        </div>
+        <div class="praca-field">
+          <label>Lugares</label>
+          <input type="number" inputmode="numeric" placeholder="0" value="${p.lugares||''}" oninput="D.pracas[${i}].lugares=parseInt(this.value)||0">
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label>Abre só fins de semana e feriados</label>
+        <div class="toggle${p.fimSemana?' on':''}" id="toggle-${i}" onclick="toggleFimSemana(${i})"></div>
+      </div>
+    </div>`;
+  });
+  document.getElementById('pracas-list').innerHTML=h;
+}
+
+// FOLGAS
+function renderFolgaSetores(){
+  let h='';
+  SETORES.forEach(s=>{
+    const funcs=getFuncs(s.k);
+    if(funcs.length===0) return;
+    const totalFolgas=funcs.reduce((acc,f)=>acc+((D.folgas[f]||[]).length),0);
+    const aberto=setoresAbertos[s.k];
+    h+=`<div class="setor-item">
+      <div class="setor-item-hd" onclick="toggleSetor('${s.k}')">
+        <div class="setor-item-left">
+          <span style="font-size:20px">${s.e}</span>
+          <div>
+            <div class="setor-item-nm">${s.n}</div>
+            <div class="setor-item-sub">${funcs.length} func. · ${totalFolgas} folga${totalFolgas!==1?'s':''} marcada${totalFolgas!==1?'s':''}</div>
+          </div>
+        </div>
+        <span class="setor-item-arr${aberto?' open':''}">›</span>
+      </div>
+      <div class="setor-item-body${aberto?' open':''}">
+        <div class="func-list">
+          ${funcs.map(f=>{
+            const nf=(D.folgas[f]||[]).length;
+            return `<button class="func-btn" onclick="openCal('${f}')">
+              <span>${f}</span>
+              <div class="func-btn-right">
+                <span class="func-folga-count${nf>0?' has-folgas':''}">${nf>0?nf+' folga'+(nf>1?'s':''):'Sem folgas'}</span>
+                <span style="color:#C8C5BE">›</span>
+              </div>
+            </button>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+  });
+  if(!h) h=`<div style="text-align:center;color:#6B6860;font-size:14px;padding:20px">Adicione os nomes da equipe no passo anterior.</div>`;
+  document.getElementById('folga-setores').innerHTML=h;
+}
+
+function getFuncs(k){
+  return (D.nomes[k]||'').split(',').map(n=>n.trim()).filter(n=>n);
+}
+
+function toggleSetor(k){
+  setoresAbertos[k]=!setoresAbertos[k];
+  renderFolgaSetores();
+}
+
+// CALENDÁRIO
+function openCal(func){
+  calFunc=func;
+  document.getElementById('cal-func-nome').textContent='📅 '+func;
+  document.getElementById('cal-modal').style.display='flex';
+  renderCalModal();
+}
+
+function closeCal(){
+  document.getElementById('cal-modal').style.display='none';
+  calFunc=null;
+  renderFolgaSetores();
+}
+
+function mudaMes(d){
+  calMes+=d;
+  if(calMes>11){calMes=0;calAno++;}
+  if(calMes<0){calMes=11;calAno--;}
+  renderCalModal();
+}
+
+function renderCalModal(){
+  const tot=new Date(calAno,calMes+1,0).getDate();
+  const off=new Date(calAno,calMes,1).getDay();
+  document.getElementById('cal-mes-titulo').textContent=MESES_NM[calMes]+' '+calAno;
+  const folgas=D.folgas[calFunc]||[];
+  const resumoEl=document.getElementById('cal-resumo-box');
+  resumoEl.innerHTML=folgas.length>0
+    ?`<div class="cal-resumo has">✅ ${folgas.length} dia${folgas.length>1?'s':''} marcado${folgas.length>1?'s':''}</div>`
+    :`<div class="cal-resumo empty">Toque nos dias de folga abaixo</div>`;
+  let h='';
+  ['D','S','T','Q','Q','S','S'].forEach(d=>{h+=`<div class="cal-dh">${d}</div>`;});
+  for(let i=0;i<off;i++) h+=`<div class="cal-d emp"></div>`;
+  for(let d=1;d<=tot;d++){
+    const dt=new Date(calAno,calMes,d),dow=dt.getDay();
+    const ds=`${calAno}-${String(calMes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const sel=folgas.includes(ds);
+    const cls='cal-d'+(sel?' sel':dow===0?' dom':dow===6?' sab':'');
+    h+=`<div class="${cls}" onclick="togFolga('${ds}')">${d}</div>`;
+  }
+  document.getElementById('cal-grid-modal').innerHTML=h;
+}
+
+function togFolga(ds){
+  if(!D.folgas[calFunc]) D.folgas[calFunc]=[];
+  const idx=D.folgas[calFunc].indexOf(ds);
+  if(idx>=0) D.folgas[calFunc].splice(idx,1);
+  else D.folgas[calFunc].push(ds);
+  renderCalModal();
+}
+
+function renderResumo(){
+  const totalFunc=Object.values(D.equipe).reduce((s,v)=>s+v,0);
+  const totalFolgas=Object.values(D.folgas).reduce((s,v)=>s+v.length,0);
+  const totalLugares=D.pracas.reduce((s,p)=>s+p.lugares,0);
+  const totalMesas=D.pracas.reduce((s,p)=>s+p.mesas,0);
+  document.getElementById('resumo').innerHTML=`
+    <h4>Resumo do cadastro</h4>
+    <div class="srow"><span>Restaurante</span><span>${D.nome||'—'}</span></div>
+    <div class="srow"><span>Cidade</span><span>${D.cidade||'—'}</span></div>
+    <div class="srow"><span>Total equipe</span><span>${totalFunc} pessoas</span></div>
+    <div class="srow"><span>Praças configuradas</span><span>${D.pracas.length} praças · ${totalMesas} mesas · ${totalLugares} lugares</span></div>
+    <div class="srow"><span>Dias fechados</span><span style="font-size:12px">${D.diasFechado.length>0?D.diasFechado.map(x=>x.dia+(x.turno!=='todos'?' ('+( x.turno==='almoco'?'almoço':'jantar')+')':'')).join(', '):'Nenhum'}</span></div>
+    <div class="srow"><span>Folgas configuradas</span><span>${totalFolgas} dias</span></div>
+  `;
+}
+
+const DIA_ABREV_PARA_NOME={Seg:'Segunda',Ter:'Terça',Qua:'Quarta',Qui:'Quinta',Sex:'Sexta',Sáb:'Sábado',Dom:'Domingo'};
+
+function mostrarErroFinalizar(msg){
+  const el=document.getElementById('erro-finalizar');
+  el.textContent=msg;
+  el.style.display='block';
+}
+
+async function finalizarCadastro(){
+  const btn=document.getElementById('btn-finalizar');
+  document.getElementById('erro-finalizar').style.display='none';
+  btn.disabled=true;
+  btn.textContent='Salvando...';
+
+  try{
+    const {data:signUpData,error:signUpError}=await supabaseClient.auth.signUp({
+      email:D.donoEmail,
+      password:D.donoSenha,
+    });
+    if(signUpError) throw signUpError;
+
+    if(!signUpData.session){
+      window.location.href='login?cadastro=1';
+      return;
+    }
+
+    const ownerId=signUpData.user.id;
+
+    const {data:restaurante,error:restError}=await supabaseClient
+      .from('restaurantes')
+      .insert({owner_id:ownerId,nome:D.nome,cidade:D.cidade})
+      .select()
+      .single();
+    if(restError) throw restError;
+    const restauranteId=restaurante.id;
+
+    // Setores fixos + setores extras com equipe configurada
+    const setoresParaCriar=[];
+    SETORES.forEach((s,i)=>{
+      if((D.equipe[s.k]||0)>0){
+        setoresParaCriar.push({restaurante_id:restauranteId,chave:s.k,nome:s.n,emoji:s.e,cor:s.c,ordem:i,_nomes:D.nomes[s.k]});
+      }
+    });
+    D.setoresExtra.forEach((s,i)=>{
+      if((s.qtd||0)>0){
+        const chave='extra_'+i;
+        setoresParaCriar.push({restaurante_id:restauranteId,chave,nome:s.nome||('Setor '+(i+1)),emoji:'📌',cor:s.cor,ordem:100+i,_nomes:s.nomes});
+      }
+    });
+
+    const funcionarioIdPorNome={};
+    for(const setor of setoresParaCriar){
+      const {_nomes,...setorRow}=setor;
+      const {data:setorCriado,error:setorError}=await supabaseClient
+        .from('setores').insert(setorRow).select().single();
+      if(setorError) throw setorError;
+
+      const nomes=[...new Set((_nomes||'').split(',').map(n=>n.trim()).filter(Boolean))];
+      for(const nome of nomes){
+        const {data:funcCriado,error:funcError}=await supabaseClient
+          .from('funcionarios')
+          .insert({restaurante_id:restauranteId,nome,setor_id:setorCriado.id})
+          .select().single();
+        if(funcError) throw funcError;
+        funcionarioIdPorNome[nome]=funcCriado.id;
+      }
+    }
+
+    // Praças
+    const pracasParaCriar=D.pracas.map((p,i)=>({
+      restaurante_id:restauranteId,nome:p.nome,mesas:p.mesas,lugares:p.lugares,fim_semana:!!p.fimSemana,ordem:i,
+    }));
+    if(pracasParaCriar.length>0){
+      const {error:pracasError}=await supabaseClient.from('pracas').insert(pracasParaCriar);
+      if(pracasError) throw pracasError;
+    }
+
+    // PAX esperado
+    const paxParaCriar=[];
+    Object.entries(D.pax).forEach(([abrev,v])=>{
+      const dia=DIA_ABREV_PARA_NOME[abrev];
+      if(!dia) return;
+      if(v.a>0) paxParaCriar.push({restaurante_id:restauranteId,dia_semana:dia,turno:'almoco',quantidade:v.a});
+      if(v.j>0) paxParaCriar.push({restaurante_id:restauranteId,dia_semana:dia,turno:'jantar',quantidade:v.j});
+    });
+    if(paxParaCriar.length>0){
+      const {error:paxError}=await supabaseClient.from('pax_esperado').insert(paxParaCriar);
+      if(paxError) throw paxError;
+    }
+
+    // Dias fechados
+    if(D.diasFechado.length>0){
+      const diasFechadosParaCriar=D.diasFechado.map(x=>({
+        restaurante_id:restauranteId,dia_semana:x.dia,turno:x.turno,
+      }));
+      const {error:diasError}=await supabaseClient.from('dias_fechados').insert(diasFechadosParaCriar);
+      if(diasError) throw diasError;
+    }
+
+    // Folgas (datas ISO já corrigidas em togFolga)
+    const folgasParaCriar=[];
+    Object.entries(D.folgas).forEach(([nome,datas])=>{
+      const funcionarioId=funcionarioIdPorNome[nome];
+      if(!funcionarioId) return;
+      datas.forEach(data=>folgasParaCriar.push({funcionario_id:funcionarioId,data}));
+    });
+    if(folgasParaCriar.length>0){
+      const {error:folgasError}=await supabaseClient.from('folgas').insert(folgasParaCriar);
+      if(folgasError) throw folgasError;
+    }
+
+    window.location.href='painel.html';
+  }catch(err){
+    btn.disabled=false;
+    btn.textContent='Ver escala do mês →';
+    mostrarErroFinalizar(err.message||'Não foi possível concluir o cadastro. Tente novamente.');
+  }
+}
+
+goTo(0);
+</script>
+</body>
+</html>
