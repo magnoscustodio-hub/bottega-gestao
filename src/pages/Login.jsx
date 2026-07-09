@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 
-const EMAIL_SINTETICO_DOMINIO = 'login.gestaosalao.internal'
-const emailSintetico = (funcionarioId) => `f-${funcionarioId}@${EMAIL_SINTETICO_DOMINIO}`
-
 function LoginDono() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -66,8 +63,8 @@ function LoginDono() {
 }
 
 function LoginEquipe() {
-  const [funcionarios, setFuncionarios] = useState([])
-  const [funcionarioId, setFuncionarioId] = useState('')
+  const [pessoas, setPessoas] = useState([])
+  const [emailLogin, setEmailLogin] = useState('')
   const [pin, setPin] = useState('')
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -76,10 +73,10 @@ function LoginEquipe() {
   useEffect(() => {
     let ativo = true
 
-    async function carregarFuncionarios() {
+    async function carregarPessoas() {
       const { data, error: listaError } = await supabase
         .from('funcionarios_login_publico')
-        .select('funcionario_id, nome')
+        .select('perfil_id, nome, email_login')
         .order('nome')
 
       if (!ativo) return
@@ -87,12 +84,12 @@ function LoginEquipe() {
       if (listaError) {
         setError('Não foi possível carregar a lista de funcionários.')
       } else {
-        setFuncionarios(data || [])
+        setPessoas(data || [])
       }
       setCarregandoLista(false)
     }
 
-    carregarFuncionarios()
+    carregarPessoas()
 
     return () => {
       ativo = false
@@ -103,7 +100,7 @@ function LoginEquipe() {
     event.preventDefault()
     setError(null)
 
-    if (!funcionarioId) {
+    if (!emailLogin) {
       setError('Escolha seu nome na lista.')
       return
     }
@@ -111,7 +108,7 @@ function LoginEquipe() {
     setLoading(true)
 
     const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: emailSintetico(funcionarioId),
+      email: emailLogin,
       password: pin,
     })
 
@@ -130,17 +127,17 @@ function LoginEquipe() {
       <label htmlFor="funcionario">Quem é você?</label>
       <select
         id="funcionario"
-        value={funcionarioId}
-        onChange={(event) => setFuncionarioId(event.target.value)}
+        value={emailLogin}
+        onChange={(event) => setEmailLogin(event.target.value)}
         disabled={carregandoLista}
         required
       >
         <option value="">
           {carregandoLista ? 'Carregando...' : 'Selecione seu nome'}
         </option>
-        {funcionarios.map((f) => (
-          <option key={f.funcionario_id} value={f.funcionario_id}>
-            {f.nome}
+        {pessoas.map((p) => (
+          <option key={p.perfil_id} value={p.email_login}>
+            {p.nome}
           </option>
         ))}
       </select>

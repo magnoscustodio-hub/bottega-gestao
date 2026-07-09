@@ -660,6 +660,13 @@ create table if not exists public.perfis_acesso (
   id uuid primary key references auth.users (id) on delete cascade,
   restaurante_id uuid not null references public.restaurantes (id) on delete cascade,
   funcionario_id uuid unique references public.funcionarios (id) on delete set null,
+  -- nome_exibicao/email_login só são usados por quem não tem funcionario_id
+  -- (liderança/gerência sem vínculo com a escala, ex.: cargos que não entram
+  -- na escala). Quem tem funcionario_id usa o nome de lá; quem não tem,
+  -- usa nome_exibicao. email_login é o e-mail sintético usado no Supabase
+  -- Auth para login por PIN — fica nulo pro Master, que usa e-mail/senha.
+  nome_exibicao text,
+  email_login text unique,
   nivel_acesso text not null check (nivel_acesso in ('master', 'gerencial', 'consulta')),
   metodo_login text not null default 'pin' check (metodo_login in ('pin', 'senha', 'magic_link')),
   created_at timestamptz not null default now()
@@ -971,8 +978,13 @@ create policy "Master e gerencial removem horarios_pontuais"
 
 create or replace view public.funcionarios_login_publico
 with (security_invoker = false) as
-select f.id as funcionario_id, f.nome, f.restaurante_id
-from public.funcionarios f
-join public.perfis_acesso pa on pa.funcionario_id = f.id;
+select
+  pa.id as perfil_id,
+  coalesce(f.nome, pa.nome_exibicao) as nome,
+  pa.email_login,
+  pa.restaurante_id
+from public.perfis_acesso pa
+left join public.funcionarios f on f.id = pa.funcionario_id
+where pa.email_login is not null; -- exclui o Master (usa e-mail/senha, não PIN)
 
 grant select on public.funcionarios_login_publico to anon, authenticated;
