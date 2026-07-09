@@ -274,6 +274,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     <div class="header-menu">
       <button class="menu-btn" onclick="openFolgasMes()">📅 Folgas</button>
       <button class="menu-btn" onclick="openHistorico()">📊 Ausências</button>
+      <button class="menu-btn" onclick="openHorariosEspeciais()">⏰ Horários</button>
     </div>
   </div>
 
@@ -324,6 +325,9 @@ let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
 let EQ={};
 // Horários especiais de entrada — carregado do Supabase (tabela horarios_especiais) em boot().
 let HORARIOS={};
+// Horários pontuais (ajuste de entrada válido só para uma data) — carregado por mês em carregarOperacional().
+let HORARIOS_PONTUAIS={};
+let heSetorAberto=null,heFunc=null;
 
 let PD=[];
 let CAA=0,MAA=0;
@@ -349,6 +353,30 @@ async function persistirFolgaVendida(nome,ds,vendida){
     const{error}=await supabaseClient.from("folgas_vendidas").delete().eq("funcionario_id",funcionarioId).eq("data",ds);
     if(error)avisoErro("Não foi possível desfazer a venda de folga.");
   }
+}
+async function persistirHorarioEspecial(nome,dias,hora){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  const{error}=await supabaseClient.from("horarios_especiais").upsert({funcionario_id:funcionarioId,dias,hora},{onConflict:"funcionario_id"});
+  if(error)avisoErro("Não foi possível salvar o horário especial de "+nome+".");
+}
+async function persistirRemoverHorarioEspecial(nome){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  const{error}=await supabaseClient.from("horarios_especiais").delete().eq("funcionario_id",funcionarioId);
+  if(error)avisoErro("Não foi possível remover o horário especial de "+nome+".");
+}
+async function persistirHorarioPontual(nome,ds,hora){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  const{error}=await supabaseClient.from("horarios_pontuais").upsert({funcionario_id:funcionarioId,data:ds,hora},{onConflict:"funcionario_id,data"});
+  if(error)avisoErro("Não foi possível salvar o horário pontual de "+nome+".");
+}
+async function persistirRemoverHorarioPontual(nome,ds){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  const{error}=await supabaseClient.from("horarios_pontuais").delete().eq("funcionario_id",funcionarioId).eq("data",ds);
+  if(error)avisoErro("Não foi possível remover o horário pontual de "+nome+".");
 }
 async function persistirEscalaManual(ds,dist){
   const{error}=await supabaseClient.from("escala_manual").upsert({restaurante_id:RESTAURANTE_ID,data:ds,distribuicao:dist,updated_at:new Date().toISOString()},{onConflict:"restaurante_id,data"});
@@ -465,6 +493,17 @@ function delExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(EXTRAS[k]){EXTRAS[
 
 const bdg=(t,c)=>`<span class="bdg ${c}">${t}</span>`;
 const chip=(n,c)=>`<span class="chip"><span class="cdot" style="background:${c}"></span>${n}</span>`;
+function horarioEspecialDe(nome,d,mi,dn,fer,isDom){
+  const pontual=(HORARIOS_PONTUAIS[`${mi}_${d}`]||{})[nome];
+  if(pontual)return{hora:pontual,pontual:true};
+  const fixo=HORARIOS[nome];
+  if(fixo&&fixo.dias.includes(dn)&&!fer&&!isDom&&dn!=="Sábado")return{hora:fixo.hora,pontual:false};
+  return null;
+}
+function chipComHorario(nome,cor,hi){
+  const icone=hi.pontual?"📌":"⏰";
+  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
+}
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
 function upd(){if(dSel)renderEsc(dSel,cm);else renderEmpty();}
@@ -847,8 +886,9 @@ function renderEsc(d,mi){
   h+=`<div class="sec">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="sec-title" style="margin-bottom:0">Praças</div>
-      <div style="display:flex;gap:6px">
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
         ${temManual?`<button onclick="resetEscalaManual(${d},${mi});renderEsc(${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↩ Resetar</button>`:""}
+        <button onclick="openHorarioPontual(${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:700">📌 Horário pontual</button>
         <button onclick="openEditarEscala(${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">✏️ Editar</button>
       </div>
     </div>
@@ -867,13 +907,15 @@ function renderEsc(d,mi){
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
         const cor=sk?EQ[sk].c:EQ.garcons.c;
         const isGarcom=sk==="garcons";
-        const horInfo=HORARIOS[g];
-        const temHorario=horInfo&&horInfo.dias.includes(dn)&&!fer&&!isDom&&dn!=="Sábado";
+        const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!isGarcom&&sk){
+          if(hi){
+            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+          }
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
-        if(temHorario){
-          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">⏰ a partir das ${horInfo.hora}</span></span>`;
+        if(hi){
+          return chipComHorario(g,cor,hi);
         }
         return chip(g,cor);
       }).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${p.id}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
@@ -919,7 +961,7 @@ function renderEsc(d,mi){
         ${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
-      <div>${disp.map(g=>chip(g,eq.c)).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
+      <div>${disp.map(g=>{const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);}).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
       <div class="extra-input-wrap"><input type="text" placeholder="+ extra..." id="ei-${k}" onkeydown="if(event.key==='Enter'){addExtra('${k}',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('${k}',${d},${mi},document.getElementById('ei-${k}').value.trim());renderEsc(${d},${mi})">+</button></div>
       </div>
     </div>`;
@@ -1150,6 +1192,139 @@ async function salvarFolgas(){
   cMod();if(dSel)renderEsc(dSel,mi);renderCal();
   showToast("✅ Folgas de "+MN[mi]+" atualizadas!");
   await Promise.all(nomes.map(g=>persistirFolgasFuncionario(g,mi,fsAno,fsDias[g])));
+}
+
+// HORÁRIOS ESPECIAIS FIXOS (recorrentes por dia da semana)
+function openHorariosEspeciais(){
+  heSetorAberto=null;heFunc=null;
+  renderModalHorarios();
+}
+function renderModalHorarios(){
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <h3>⏰ Horários especiais</h3>
+    <p class="msub">Entrada diferente do padrão, recorrente por dia da semana (ex: entra às 15h de segunda a sexta). Toque num funcionário para configurar.</p>`;
+  Object.keys(EQ).forEach(k=>{
+    const eq=EQ[k],aberto=heSetorAberto===k;
+    const totalComHorario=eq.m.filter(g=>HORARIOS[g]).length;
+    h+=`<div class="fs-setor">
+      <div class="fs-setor-hd" onclick="toggleHeSetor('${k}')">
+        <div class="fs-setor-left"><span style="font-size:20px">${eq.e}</span>
+          <div><div class="fs-setor-nm" style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:${eq.c};display:inline-block"></span>${eq.l}</div>
+          <div class="fs-setor-sub">${eq.m.length} func. · ${totalComHorario} com horário especial</div></div>
+        </div>
+        <span style="font-size:22px;color:var(--text3);transition:transform .2s;${aberto?"transform:rotate(90deg)":""}">›</span>
+      </div>
+      ${aberto?`<div class="fs-setor-body">${eq.m.map(g=>{
+        const hi=HORARIOS[g];
+        const label=hi?`${hi.hora} · ${hi.dias.map(dd=>DIA_NOME_PARA_ABREV[dd]).join("/")}`:"Sem horário especial";
+        return `<button class="fs-func-btn" onclick="openHeFunc('${g}')"><span>${g}</span><div class="fs-func-right"><span class="fs-func-count${hi?" has":""}">${label}</span><span style="color:var(--border-s)">›</span></div></button>`;
+      }).join("")}</div>`:""}
+    </div>`;
+  });
+  h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+function toggleHeSetor(k){heSetorAberto=heSetorAberto===k?null:k;renderModalHorarios();}
+function openHeFunc(g){
+  heFunc=g;
+  const hi=HORARIOS[g];
+  window._heDias=hi?[...hi.dias]:[];
+  window._heHora=hi?hi.hora:"";
+  renderHeFunc();
+}
+function toggleHeDia(dia){
+  const idx=window._heDias.indexOf(dia);
+  if(idx>=0)window._heDias.splice(idx,1);else window._heDias.push(dia);
+  renderHeFunc();
+}
+function renderHeFunc(){
+  const dias=window._heDias||[],hora=window._heHora||"",temHorario=!!HORARIOS[heFunc];
+  let h=`<div class="mov" onclick="if(event.target===this){heFunc=null;renderModalHorarios()}"><div class="mbox">
+    <div class="cal-modal-hd"><h3>⏰ ${heFunc}</h3><button class="cal-close" onclick="heFunc=null;renderModalHorarios()">✕</button></div>
+    <p class="msub">Selecione os dias em que ${heFunc} entra num horário diferente do padrão.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      ${DIAS.map(dd=>`<button onclick="toggleHeDia('${dd}')" style="font-size:12px;padding:6px 12px;border-radius:20px;border:1.5px solid ${dias.includes(dd)?"var(--text)":"var(--border-s)"};background:${dias.includes(dd)?"var(--text)":"var(--surface2)"};color:${dias.includes(dd)?"white":"var(--text2)"};cursor:pointer;font-family:inherit;font-weight:700">${DIA_NOME_PARA_ABREV[dd]}</button>`).join("")}
+    </div>
+    <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Horário de entrada</label>
+    <input type="text" id="he-hora" value="${hora}" placeholder="ex: 15h" oninput="window._heHora=this.value" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:14px;font-family:inherit">
+    <div class="macts">
+      <button onclick="heFunc=null;renderModalHorarios()">Cancelar</button>
+      ${temHorario?`<button class="brd" onclick="removerHorarioEspecial()">Remover</button>`:""}
+      <button class="bok" onclick="salvarHorarioEspecial()">Salvar ✓</button>
+    </div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function salvarHorarioEspecial(){
+  const dias=window._heDias||[],hora=(window._heHora||"").trim(),nome=heFunc;
+  if(dias.length===0||!hora){avisoErro("Selecione ao menos um dia e informe o horário.");return;}
+  HORARIOS[nome]={dias:[...dias],hora};
+  heFunc=null;renderModalHorarios();
+  if(dSel!=null)renderEsc(dSel,gm());
+  showToast("✅ Horário especial de "+nome+" salvo!");
+  await persistirHorarioEspecial(nome,dias,hora);
+}
+async function removerHorarioEspecial(){
+  const nome=heFunc;
+  delete HORARIOS[nome];
+  heFunc=null;renderModalHorarios();
+  if(dSel!=null)renderEsc(dSel,gm());
+  showToast("✅ Horário especial de "+nome+" removido!");
+  await persistirRemoverHorarioEspecial(nome);
+}
+
+// HORÁRIO PONTUAL (ajuste de entrada válido só para um dia específico)
+function openHorarioPontual(d,mi){renderModalHorarioPontual(d,mi);}
+function renderModalHorarioPontual(d,mi){
+  const ds=ds2s(mi,d);
+  const atual=HORARIOS_PONTUAIS[`${mi}_${d}`]||{};
+  const nomesComHorario=Object.keys(atual);
+  const disponiveisSemHorario=getTodosDisponiveis(d,mi).filter(x=>!nomesComHorario.includes(x.nome));
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <h3>📌 Horário pontual — ${fmtData(ds)}</h3>
+    <p class="msub">Ajuste de entrada válido só neste dia. No dia seguinte volta ao horário normal automaticamente.</p>`;
+  if(nomesComHorario.length===0){
+    h+=`<div class="aus-empty">Nenhum ajuste pontual para este dia.</div>`;
+  }else{
+    h+=`<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">${nomesComHorario.map(nome=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface2)">
+        <span style="font-weight:700">${nome}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:12px;font-weight:700;color:var(--gold)">📌 ${atual[nome]}</span>
+          <button onclick="removerHorarioPontualUI('${nome}',${d},${mi})" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;line-height:1;padding:0">×</button>
+        </div>
+      </div>`).join("")}</div>`;
+  }
+  if(disponiveisSemHorario.length>0){
+    h+=`<div style="border-top:1px solid var(--border);padding-top:12px">
+      <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Adicionar ajuste</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="hp-func" style="flex:1;min-width:140px">${disponiveisSemHorario.map(x=>`<option value="${x.nome}">${x.nome}</option>`).join("")}</select>
+        <input type="text" id="hp-hora" placeholder="ex: 14h" style="width:90px;font-size:13px;padding:9px 10px;border-radius:var(--rs);border:1.5px solid var(--border-s);font-family:inherit">
+        <button onclick="adicionarHorarioPontualUI(${d},${mi})" style="padding:9px 14px;border-radius:var(--rs);border:none;background:var(--text);color:white;font-weight:700;cursor:pointer;font-family:inherit">+</button>
+      </div>
+    </div>`;
+  }
+  h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function adicionarHorarioPontualUI(d,mi){
+  const nome=document.getElementById("hp-func").value;
+  const hora=document.getElementById("hp-hora").value.trim();
+  if(!nome||!hora){avisoErro("Selecione o funcionário e informe o horário.");return;}
+  const ds=ds2s(mi,d),k=`${mi}_${d}`;
+  if(!HORARIOS_PONTUAIS[k])HORARIOS_PONTUAIS[k]={};
+  HORARIOS_PONTUAIS[k][nome]=hora;
+  renderModalHorarioPontual(d,mi);renderEsc(d,mi);
+  showToast("✅ Horário pontual de "+nome+" salvo!");
+  await persistirHorarioPontual(nome,ds,hora);
+}
+async function removerHorarioPontualUI(nome,d,mi){
+  const ds=ds2s(mi,d),k=`${mi}_${d}`;
+  if(HORARIOS_PONTUAIS[k])delete HORARIOS_PONTUAIS[k][nome];
+  renderModalHorarioPontual(d,mi);renderEsc(d,mi);
+  showToast("✅ Horário pontual de "+nome+" removido!");
+  await persistirRemoverHorarioPontual(nome,ds);
 }
 
 function cMod(){document.getElementById("modal").innerHTML="";}
@@ -1496,14 +1671,15 @@ async function carregarOperacional(){
   const inicio=`${cy}-${String(cm+1).padStart(2,"0")}-01`;
   const fim=`${cy}-${String(cm+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
 
-  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};
+  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};
 
-  const[folgasRes,resRes,extrasRes,escalaRes,fvRes]=await Promise.all([
+  const[folgasRes,resRes,extrasRes,escalaRes,fvRes,hpRes]=await Promise.all([
     supabaseClient.from("folgas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
     supabaseClient.from("reservas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("extras").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("escala_manual").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("folgas_vendidas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
+    supabaseClient.from("horarios_pontuais").select("data,hora,funcionarios(nome)").gte("data",inicio).lte("data",fim),
   ]);
 
   FOLGAS[cm]=FOLGAS[cm]||{};
@@ -1537,6 +1713,14 @@ async function carregarOperacional(){
     const k=`${cm}_${dia}`;
     if(!FOLGAS_VENDIDAS[k])FOLGAS_VENDIDAS[k]=[];
     FOLGAS_VENDIDAS[k].push(nome);
+  });
+
+  (hpRes.data||[]).forEach(r=>{
+    const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome)return;
+    const dia=parseInt(r.data.split("-")[2],10);
+    const k=`${cm}_${dia}`;
+    if(!HORARIOS_PONTUAIS[k])HORARIOS_PONTUAIS[k]={};
+    HORARIOS_PONTUAIS[k][nome]=r.hora;
   });
 
   recalcAusenciasDoMes();
