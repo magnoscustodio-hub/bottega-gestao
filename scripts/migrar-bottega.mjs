@@ -73,6 +73,13 @@ const FOLGAS_JULHO = {
 // Fernanda e Isaías tiram férias em julho inteiro; ambos voltam em agosto/2026.
 const FERIAS_JULHO = ['Fernanda', 'Isaías']
 
+// Maya e Vanderlei entram às 15h (em vez do horário padrão), só de segunda a sexta.
+// Sábados, domingos e feriados seguem o horário normal.
+const HORARIOS_ESPECIAIS = {
+  Maya: { dias: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'], hora: '15h' },
+  Vanderlei: { dias: ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta'], hora: '15h' },
+}
+
 function diasDoMes(ano, mesIdx) {
   return new Date(ano, mesIdx + 1, 0).getDate()
 }
@@ -214,6 +221,19 @@ async function main() {
   if (feriasRows.length > 0) {
     const { error: feriasError } = await supabase.from('ausencias').insert(feriasRows)
     if (feriasError) throw feriasError
+  }
+
+  console.log('Salvando horários especiais de entrada...')
+  const horariosRows = Object.entries(HORARIOS_ESPECIAIS)
+    .map(([nome, h]) => {
+      const funcionarioId = funcionarioIdPorNome[nome]
+      if (!funcionarioId) return null
+      return { funcionario_id: funcionarioId, dias: h.dias, hora: h.hora }
+    })
+    .filter(Boolean)
+  if (horariosRows.length > 0) {
+    const { error: horariosError } = await supabase.from('horarios_especiais').insert(horariosRows)
+    if (horariosError) throw horariosError
   }
 
   console.log('\nMigração concluída! Restaurante:', restauranteId)

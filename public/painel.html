@@ -72,6 +72,9 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 
 .leg{display:flex;gap:8px;flex-wrap:wrap;font-size:10px;color:var(--text3);margin-top:12px;padding-top:12px;border-top:1.5px solid var(--border)}
 .ldot{width:10px;height:4px;border-radius:2px;display:inline-block;margin-right:2px;vertical-align:middle}
+.leg-fer{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text2);margin-top:8px}
+.leg-fer span{display:flex;gap:6px;align-items:baseline}
+.leg-fer b{color:var(--yellow);font-weight:800;min-width:16px}
 
 /* ESCALA */
 .esc{background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-md);border:1px solid var(--border)}
@@ -314,12 +317,12 @@ let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
 let FJ=[];
 let FOLGAS={};
 let FERIAS={};
-let AUSENCIAS={},HISTORICO=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
+let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
 let cm=6,cy=2026,dSel=null;
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
 
 let EQ={};
-// Horários especiais de entrada — não coletado pelo onboarding hoje; fica vazio para novos restaurantes.
+// Horários especiais de entrada — carregado do Supabase (tabela horarios_especiais) em boot().
 let HORARIOS={};
 
 let PD=[];
@@ -476,11 +479,13 @@ function renderCal(){
   </div><div class="cal-grid">`;
   ["D","S","T","Q","Q","S","S"].forEach(d=>{h+=`<div class="cdh">${d}</div>`;});
   for(let i=0;i<off;i++) h+=`<div></div>`;
+  const feriadosDoMes=[];
   for(let d=1;d<=tot;d++){
     const dt=new Date(cy,cm,d),dow=dt.getDay();
     const ds=ds2s(cm,d),dn=dnom(cm,d);
     const isH=dt.toDateString()===new Date().toDateString();
     const isSel=dSel===d,fer=nFer(ds);
+    if(fer)feriadosDoMes.push({d,fer});
     const nf=totalFolgas(d,cm),res=gRes(cm,d,tu);
     const pax=calcPax(cm,d,tu),ocp=Math.min(100,Math.round(pax/CAA*100));
     const ocColor=ocp>=85?"#B02020":ocp>=60?"#8B6000":"#1A6B3C";
@@ -496,7 +501,7 @@ function renderCal(){
 
     let numColor=isSel?"white":isDom?"var(--red)":isSab?"var(--yellow)":isH?"var(--blue)":"var(--text)";
 
-    h+=`<div class="${cls}" onclick="selDay(${d})">
+    h+=`<div class="${cls}" onclick="selDay(${d})"${fer?` title="${fer}"`:""}>
       <span class="cn" style="color:${numColor}">${d}</span>
       ${isH&&!isSel?`<span class="cl" style="color:var(--blue);font-weight:800;font-size:8px">HOJE</span>`:""}
       ${fer&&!isSel?`<span class="cl" style="color:var(--yellow)">${fer.slice(0,4)}</span>`:""}
@@ -512,7 +517,8 @@ function renderCal(){
     <span style="color:var(--gold)">Nr=reservas</span>
     <span>Nf=folgas</span>
   </div>
-  ${cm===6?`<div class="albox alor" style="margin-top:12px;border-radius:var(--rs)">🏖️ <span><strong>Isaías</strong> (Garçom) e <strong>Fernanda</strong> (Hostess) de férias em julho — retornam em agosto.</span></div>`:""}
+  ${feriadosDoMes.length?`<div class="leg-fer">${feriadosDoMes.map(f=>`<span><b>${f.d}</b> ${f.fer}</span>`).join("")}</div>`:""}
+  ${feriasBanner(cm,"margin-top:12px;border-radius:var(--rs)")}
   </div>`;
   document.getElementById("cal").innerHTML=h;
 }
@@ -757,7 +763,7 @@ function renderEsc(d,mi){
   // ALERTAS
   if(ocp>=85) h+=`<div class="albox aldn">🔥 <span><strong>Alta demanda</strong> — todas as praças em operação. Considere chamar extras.</span></div>`;
   if(isDom&&totalF>0) h+=`<div class="albox alin">💰 <div><strong>Domingo — considerar comprar folgas</strong><br><span style="font-size:11px;font-weight:500">${Object.values(folgasHoje).flat().join(", ")} de folga.</span></div></div>`;
-  if(mi===6) h+=`<div class="albox alor">🏖️ <span><strong>Isaías</strong> (Garçom) e <strong>Fernanda</strong> (Hostess) de férias em julho — retornam em agosto.</span></div>`;
+  h+=feriasBanner(mi);
 
   // AUSÊNCIAS
   h+=`<div class="sec bg2">
@@ -1440,12 +1446,15 @@ async function carregarHistorico(){
     .select("data,motivo,funcionarios(nome)")
     .order("data");
   if(error){avisoErro("Não foi possível carregar o histórico de ausências.");return;}
-  HISTORICO=(data||[]).map(r=>({
+  const linhas=(data||[]).map(r=>({
     func:r.funcionarios?r.funcionarios.nome:"",
     ds:r.data,
     motivo:r.motivo,
     setor:getSetorFunc(r.funcionarios?r.funcionarios.nome:""),
   })).filter(h=>h.func);
+  // Férias é um status à parte — não conta como ausência/falta em nenhuma listagem.
+  HISTORICO=linhas.filter(h=>h.motivo!=="Férias");
+  FERIAS_ROWS=linhas.filter(h=>h.motivo==="Férias");
 }
 
 function recalcAusenciasDoMes(){
@@ -1457,6 +1466,29 @@ function recalcAusenciasDoMes(){
     if(!AUSENCIAS[key])AUSENCIAS[key]=[];
     if(!AUSENCIAS[key].includes(h.func))AUSENCIAS[key].push(h.func);
   });
+}
+
+function recalcFeriasDoMes(){
+  FERIAS={};
+  FERIAS_ROWS.forEach(h=>{
+    const[ano,mes,dia]=h.ds.split("-").map(Number);
+    if(ano!==cy)return;
+    const mi=mes-1;
+    if(!FERIAS[mi])FERIAS[mi]=[];
+    if(!FERIAS[mi].includes(h.func))FERIAS[mi].push(h.func);
+  });
+}
+
+function nomesComE(itens){
+  if(itens.length<=1)return itens[0]||"";
+  return itens.slice(0,-1).join(", ")+" e "+itens[itens.length-1];
+}
+function feriasBanner(mi,extraStyle){
+  const nomes=FERIAS[mi]||[];
+  if(!nomes.length)return "";
+  const proxMes=MN[(mi+1)%12];
+  const texto=nomesComE(nomes.map(n=>`<strong>${n}</strong>`));
+  return `<div class="albox alor"${extraStyle?` style="${extraStyle}"`:""}>🏖️ <span>${texto} de férias em ${MN[mi]} — retorna${nomes.length>1?"m":""} em ${proxMes}.</span></div>`;
 }
 
 async function carregarOperacional(){
@@ -1508,6 +1540,7 @@ async function carregarOperacional(){
   });
 
   recalcAusenciasDoMes();
+  recalcFeriasDoMes();
 }
 
 async function boot(){
@@ -1542,6 +1575,15 @@ async function boot(){
         pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);
       }
     });
+  });
+
+  const{data:horariosRows}=await supabaseClient
+    .from("horarios_especiais")
+    .select("dias,hora,funcionarios(nome)");
+  HORARIOS={};
+  (horariosRows||[]).forEach(r=>{
+    const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome)return;
+    HORARIOS[nome]={dias:r.dias,hora:r.hora};
   });
 
   const{data:pracasRows}=await supabaseClient

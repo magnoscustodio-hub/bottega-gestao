@@ -342,6 +342,57 @@ create policy "Donos podem remover ausencias do seu restaurante"
     )
   );
 
+create table if not exists public.horarios_especiais (
+  id uuid primary key default gen_random_uuid(),
+  funcionario_id uuid not null references public.funcionarios (id) on delete cascade,
+  dias text[] not null,
+  hora text not null,
+  created_at timestamptz not null default now(),
+  unique (funcionario_id)
+);
+
+alter table public.horarios_especiais enable row level security;
+
+create policy "Donos podem ver horarios_especiais do seu restaurante"
+  on public.horarios_especiais for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      join public.restaurantes r on r.id = f.restaurante_id
+      where f.id = horarios_especiais.funcionario_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos podem cadastrar horarios_especiais do seu restaurante"
+  on public.horarios_especiais for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      join public.restaurantes r on r.id = f.restaurante_id
+      where f.id = horarios_especiais.funcionario_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos podem atualizar horarios_especiais do seu restaurante"
+  on public.horarios_especiais for update
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      join public.restaurantes r on r.id = f.restaurante_id
+      where f.id = horarios_especiais.funcionario_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos podem remover horarios_especiais do seu restaurante"
+  on public.horarios_especiais for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      join public.restaurantes r on r.id = f.restaurante_id
+      where f.id = horarios_especiais.funcionario_id and r.owner_id = auth.uid()
+    )
+  );
+
 create table if not exists public.extras (
   id uuid primary key default gen_random_uuid(),
   restaurante_id uuid not null references public.restaurantes (id) on delete cascade,
