@@ -646,3 +646,333 @@ create policy "Donos podem remover horarios_pontuais do seu restaurante"
       where f.id = horarios_pontuais.funcionario_id and r.owner_id = auth.uid()
     )
   );
+
+-- ============================================================
+-- Login individual de funcionarios (PIN) + niveis de acesso
+-- (master / gerencial / consulta). 100% aditivo às policies acima:
+-- não altera nem remove nada, só soma novas regras em paralelo.
+-- Rodar apenas esta seção se as tabelas acima já existirem.
+-- Para instalações já em produção, use supabase/login_funcionarios.sql
+-- (mesmo conteúdo, revisável antes de rodar).
+-- ============================================================
+
+create table if not exists public.perfis_acesso (
+  id uuid primary key references auth.users (id) on delete cascade,
+  restaurante_id uuid not null references public.restaurantes (id) on delete cascade,
+  funcionario_id uuid unique references public.funcionarios (id) on delete set null,
+  nivel_acesso text not null check (nivel_acesso in ('master', 'gerencial', 'consulta')),
+  metodo_login text not null default 'pin' check (metodo_login in ('pin', 'senha', 'magic_link')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.perfis_acesso enable row level security;
+
+create policy "Cada um ve o proprio perfil de acesso"
+  on public.perfis_acesso for select
+  using (auth.uid() = id);
+
+create policy "Donos veem perfis de acesso do seu restaurante"
+  on public.perfis_acesso for select
+  using (
+    exists (
+      select 1 from public.restaurantes r
+      where r.id = perfis_acesso.restaurante_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos cadastram perfis de acesso no seu restaurante"
+  on public.perfis_acesso for insert
+  with check (
+    exists (
+      select 1 from public.restaurantes r
+      where r.id = perfis_acesso.restaurante_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos atualizam perfis de acesso do seu restaurante"
+  on public.perfis_acesso for update
+  using (
+    exists (
+      select 1 from public.restaurantes r
+      where r.id = perfis_acesso.restaurante_id and r.owner_id = auth.uid()
+    )
+  );
+
+create policy "Donos removem perfis de acesso do seu restaurante"
+  on public.perfis_acesso for delete
+  using (
+    exists (
+      select 1 from public.restaurantes r
+      where r.id = perfis_acesso.restaurante_id and r.owner_id = auth.uid()
+    )
+  );
+
+create or replace function public.tem_nivel(p_restaurante_id uuid, p_niveis text[])
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.perfis_acesso pa
+    where pa.id = auth.uid()
+      and pa.restaurante_id = p_restaurante_id
+      and pa.nivel_acesso = any(p_niveis)
+  )
+  or exists (
+    select 1 from public.restaurantes r
+    where r.id = p_restaurante_id and r.owner_id = auth.uid()
+  );
+$$;
+
+create policy "Todos os niveis podem ver restaurantes"
+  on public.restaurantes for select
+  using (public.tem_nivel(id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver funcionarios"
+  on public.funcionarios for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver setores"
+  on public.setores for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver pracas"
+  on public.pracas for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver pax_esperado"
+  on public.pax_esperado for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver dias_fechados"
+  on public.dias_fechados for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver extras"
+  on public.extras for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver reservas"
+  on public.reservas for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver escala_manual"
+  on public.escala_manual for select
+  using (public.tem_nivel(restaurante_id, array['master','gerencial','consulta']));
+
+create policy "Todos os niveis podem ver folgas"
+  on public.folgas for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial','consulta'])
+    )
+  );
+
+create policy "Todos os niveis podem ver folgas_vendidas"
+  on public.folgas_vendidas for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas_vendidas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial','consulta'])
+    )
+  );
+
+create policy "Todos os niveis podem ver ausencias"
+  on public.ausencias for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = ausencias.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial','consulta'])
+    )
+  );
+
+create policy "Todos os niveis podem ver horarios_especiais"
+  on public.horarios_especiais for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_especiais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial','consulta'])
+    )
+  );
+
+create policy "Todos os niveis podem ver horarios_pontuais"
+  on public.horarios_pontuais for select
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_pontuais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial','consulta'])
+    )
+  );
+
+create policy "Master e gerencial cadastram escala_manual"
+  on public.escala_manual for insert
+  with check (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial atualizam escala_manual"
+  on public.escala_manual for update
+  using (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial removem escala_manual"
+  on public.escala_manual for delete
+  using (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial cadastram extras"
+  on public.extras for insert
+  with check (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial removem extras"
+  on public.extras for delete
+  using (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial cadastram reservas"
+  on public.reservas for insert
+  with check (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial atualizam reservas"
+  on public.reservas for update
+  using (public.tem_nivel(restaurante_id, array['master','gerencial']));
+
+create policy "Master e gerencial cadastram folgas"
+  on public.folgas for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial removem folgas"
+  on public.folgas for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial cadastram folgas_vendidas"
+  on public.folgas_vendidas for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas_vendidas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial removem folgas_vendidas"
+  on public.folgas_vendidas for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = folgas_vendidas.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial cadastram ausencias"
+  on public.ausencias for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = ausencias.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial atualizam ausencias"
+  on public.ausencias for update
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = ausencias.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial removem ausencias"
+  on public.ausencias for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = ausencias.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial cadastram horarios_especiais"
+  on public.horarios_especiais for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_especiais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial atualizam horarios_especiais"
+  on public.horarios_especiais for update
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_especiais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial removem horarios_especiais"
+  on public.horarios_especiais for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_especiais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial cadastram horarios_pontuais"
+  on public.horarios_pontuais for insert
+  with check (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_pontuais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial atualizam horarios_pontuais"
+  on public.horarios_pontuais for update
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_pontuais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create policy "Master e gerencial removem horarios_pontuais"
+  on public.horarios_pontuais for delete
+  using (
+    exists (
+      select 1 from public.funcionarios f
+      where f.id = horarios_pontuais.funcionario_id
+        and public.tem_nivel(f.restaurante_id, array['master','gerencial'])
+    )
+  );
+
+create or replace view public.funcionarios_login_publico
+with (security_invoker = false) as
+select f.id as funcionario_id, f.nome, f.restaurante_id
+from public.funcionarios f
+join public.perfis_acesso pa on pa.funcionario_id = f.id;
+
+grant select on public.funcionarios_login_publico to anon, authenticated;

@@ -91,19 +91,12 @@
   padding: 1.5rem;
 }
 
-.auth-card {
+.auth-wrap {
   width: 100%;
   max-width: 360px;
-  background: #ffffff;
-  border: 1px solid #e4e4e7;
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  display: flex;
-  flex-direction: column;
 }
 
-.auth-card h1 {
+.auth-wrap h1 {
   margin: 0 0 0.25rem;
   color: #27272a;
   font-size: 1.5rem;
@@ -113,6 +106,41 @@
   margin: 0 0 1.5rem;
   color: #52525b;
   font-size: 0.95rem;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 0.55rem 0.5rem;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #52525b;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-tab.active {
+  background: #7c3aed;
+  border-color: #7c3aed;
+  color: #ffffff;
+}
+
+.auth-card {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  display: flex;
+  flex-direction: column;
 }
 
 .auth-card label {
@@ -130,9 +158,20 @@
   font-size: 0.95rem;
 }
 
-.auth-card input:focus {
+.auth-card input:focus,
+.auth-card select:focus {
   outline: none;
   border-color: #7c3aed;
+}
+
+.auth-card select {
+  padding: 0.6rem 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid #d4d4d8;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #ffffff;
+  color: #27272a;
 }
 
 .auth-card button {
