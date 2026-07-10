@@ -2,28 +2,114 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .home {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 3rem 1.5rem;
+  flex: 1;
+  background: #dce1e6;
+  padding: 1.75rem 1.25rem 3rem;
 }
 
-.home-hero {
-  text-align: center;
+@media (min-width: 640px) {
+  .home {
+    padding: 2.5rem 2rem 4rem;
+  }
+}
+
+.home-inner {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.entry-block {
+  max-width: 640px;
   margin-bottom: 3rem;
 }
 
-.home-hero h1 {
-  font-size: 2.5rem;
-  margin-bottom: 0.5rem;
-  color: #7c3aed;
+.entry-topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
-.home-hero p {
-  font-size: 1.1rem;
-  color: #52525b;
+.entry-brand {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b767f;
+}
+
+.entry-hero {
+  margin-top: 2.75rem;
+}
+
+.entry-title {
+  font-size: 1.75rem;
+  font-weight: 500;
+  color: #28323a;
+  margin: 0 0 0.35rem;
+}
+
+.entry-subtitle {
+  font-size: 0.95rem;
+  color: #5a6570;
+  margin: 0;
+}
+
+.entry-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+
+@media (min-width: 480px) {
+  .entry-actions {
+    flex-direction: row;
+  }
+}
+
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+  text-align: center;
+}
+
+.btn-primary {
+  background: #28323a;
+  color: #dce1e6;
+  border: 1px solid #28323a;
+}
+
+.btn-primary:hover {
+  background: #1c242a;
+}
+
+.btn-secondary {
+  background: transparent;
+  color: #28323a;
+  border: 1px solid #9ba6af;
+}
+
+.btn-secondary:hover {
+  background: rgba(40, 50, 58, 0.05);
+}
+
+.entry-link-secondary {
+  display: inline-block;
+  margin-top: 1.25rem;
+  font-size: 0.85rem;
+  color: #6b767f;
+  text-decoration: underline;
 }
 
 .home-features {
@@ -50,37 +136,6 @@
   margin: 0;
   color: #52525b;
   font-size: 0.95rem;
-}
-
-.home-cta-group {
-  display: flex;
-  justify-content: center;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
-.home-cta {
-  display: inline-block;
-  padding: 0.65rem 1.5rem;
-  background: #7c3aed;
-  color: #ffffff;
-  text-decoration: none;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.home-cta:hover {
-  background: #6d28d9;
-}
-
-.home-cta-secondary {
-  background: transparent;
-  color: #7c3aed;
-  border: 1px solid #7c3aed;
-}
-
-.home-cta-secondary:hover {
-  background: #f5f3ff;
 }
 
 .auth {

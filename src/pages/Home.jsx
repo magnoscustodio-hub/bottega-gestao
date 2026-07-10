@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import LogoGestaoOperacional from '../components/LogoGestaoOperacional'
 
 const features = [
   {
@@ -18,30 +19,40 @@ const features = [
 function Home() {
   return (
     <main className="home">
-      <header className="home-hero">
-        <h1>GestãoSalão</h1>
-        <p>Sistema de gestão de salão para restaurantes.</p>
-        <div className="home-cta-group">
-          <Link className="home-cta" to="/login">
-            Entrar
-          </Link>
-          <a className="home-cta home-cta-secondary" href="/onboarding.html">
-            Cadastrar restaurante
-          </a>
-          <a className="home-cta home-cta-secondary" href="/painel.html">
+      <div className="home-inner">
+        <div className="entry-block">
+          <div className="entry-topbar">
+            <LogoGestaoOperacional size={72} />
+            <span className="entry-brand">GESTÃO OPERACIONAL</span>
+          </div>
+
+          <div className="entry-hero">
+            <h1 className="entry-title">GestãoSalão</h1>
+            <p className="entry-subtitle">Organize turnos e escalas com facilidade.</p>
+          </div>
+
+          <div className="entry-actions">
+            <Link className="btn-primary" to="/login">
+              Entrar
+            </Link>
+            <a className="btn-secondary" href="/onboarding.html">
+              Cadastrar restaurante
+            </a>
+          </div>
+          <a className="entry-link-secondary" href="/painel.html">
             Escala de funcionários
           </a>
         </div>
-      </header>
 
-      <section className="home-features">
-        {features.map((feature) => (
-          <article key={feature.title} className="feature-card">
-            <h2>{feature.title}</h2>
-            <p>{feature.description}</p>
-          </article>
-        ))}
-      </section>
+        <section className="home-features">
+          {features.map((feature) => (
+            <article key={feature.title} className="feature-card">
+              <h2>{feature.title}</h2>
+              <p>{feature.description}</p>
+            </article>
+          ))}
+        </section>
+      </div>
     </main>
   )
 }
