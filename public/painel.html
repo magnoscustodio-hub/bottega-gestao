@@ -295,11 +295,6 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
         <option value="10">Novembro 2026</option><option value="11">Dezembro 2026</option>
       </select>
     </div>
-    <div class="ctrl"><label>Turno</label>
-      <select id="xt" onchange="upd()">
-        <option value="a">Almoço</option><option value="j">Jantar</option>
-      </select>
-    </div>
   </div>
 
   <div class="main">
@@ -331,6 +326,8 @@ let FOLGAS={};
 let FERIAS={};
 let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
 let cm=6,cy=2026,dSel=null;
+// Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
+let TURNO="a";
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
 
 let EQ={};
@@ -442,7 +439,7 @@ const dim=m=>new Date(cy,m+1,0).getDate();
 const dnom=(m,d)=>{const dt=new Date(cy,m,d);return DIAS[dt.getDay()===0?6:dt.getDay()-1];};
 const ds2s=(m,d)=>`${cy}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 const gm=()=>parseInt(document.getElementById("xm").value);
-const gt=()=>document.getElementById("xt").value;
+const gt=()=>TURNO;
 const gRes=(mi,d,tu)=>RES[`${mi}_${d}_${tu}`]||0;
 const sRes=(mi,d,tu,v)=>{RES[`${mi}_${d}_${tu}`]=v;};
 const fmtData=ds=>{const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;};
@@ -511,13 +508,32 @@ function horarioEspecialDe(nome,d,mi,dn,fer,isDom){
   if(fixo&&fixo.dias.includes(dn)&&!fer&&!isDom&&dn!=="Sábado")return{hora:fixo.hora,pontual:false};
   return null;
 }
+function horaParaNumero(str){
+  if(!str)return null;
+  const m=String(str).match(/(\d{1,2})(?:[:h](\d{2}))?/);
+  if(!m)return null;
+  const h=parseInt(m[1],10);
+  const min=m[2]?parseInt(m[2],10):0;
+  if(isNaN(h))return null;
+  return h+min/60;
+}
+// Auxílio visual do filtro de Turno: nunca trava nada, só deixa mais discreto
+// quem normalmente chega depois das 15h quando o turno selecionado é Almoço.
+function estiloForaDoTurno(hi){
+  if(!hi||TURNO!=="a")return "";
+  const n=horaParaNumero(hi.hora);
+  return(n!==null&&n>=15)?"opacity:.4;filter:grayscale(.35);":"";
+}
+function tituloForaDoTurno(hi){
+  return estiloForaDoTurno(hi)?" title=\"Fora do turno de almoço (auxílio visual — não impede edição)\"":"";
+}
 function chipComHorario(nome,cor,hi){
   const icone=hi.pontual?"📌":"⏰";
-  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
+  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${estiloForaDoTurno(hi)}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
 }
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
-function upd(){if(dSel)renderEsc(dSel,cm);else renderEmpty();}
+function mudarTurnoDia(v){TURNO=v;if(dSel)renderEsc(dSel,cm);}
 function onRes(mi,d,tu){sRes(mi,d,tu,parseInt(document.getElementById("inp-res").value)||0);persistirReserva(ds2s(mi,d),tu==="a"?"almoco":"jantar",gRes(mi,d,tu));renderEsc(d,mi);renderCal();}
 
 function renderCal(){
@@ -892,6 +908,16 @@ function renderEsc(d,mi){
     h+=`</div></div>`;
   }
 
+  // TURNO — auxílio visual pra esta tela do dia (não filtra dados, não trava edição)
+  h+=`<div class="controls" style="margin-bottom:12px">
+    <div class="ctrl"><label>Turno</label>
+      <select onchange="mudarTurnoDia(this.value)">
+        <option value="a"${tu==="a"?" selected":""}>Almoço</option>
+        <option value="j"${tu==="j"?" selected":""}>Jantar</option>
+      </select>
+    </div>
+  </div>`;
+
   // PRAÇAS
   const temManual=!!getEscalaManual(d,mi);
   h+=`<div class="sec">
@@ -921,7 +947,7 @@ function renderEsc(d,mi){
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!isGarcom&&sk){
           if(hi){
-            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor};${estiloForaDoTurno(hi)}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
           }
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
