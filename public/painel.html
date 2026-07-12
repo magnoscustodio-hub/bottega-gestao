@@ -522,7 +522,7 @@ function horaParaNumero(str){
 function estiloForaDoTurno(hi){
   if(!hi||TURNO!=="a")return "";
   const n=horaParaNumero(hi.hora);
-  return(n!==null&&n>=15)?"opacity:.4;filter:grayscale(.35);":"";
+  return(n!==null&&n>=15)?"opacity:.6;":"";
 }
 function tituloForaDoTurno(hi){
   return estiloForaDoTurno(hi)?" title=\"Fora do turno de almoço (auxílio visual — não impede edição)\"":"";
@@ -909,11 +909,12 @@ function renderEsc(d,mi){
   }
 
   // TURNO — auxílio visual pra esta tela do dia (não filtra dados, não trava edição)
-  h+=`<div class="controls" style="margin-bottom:12px">
-    <div class="ctrl"><label>Turno</label>
-      <select onchange="mudarTurnoDia(this.value)">
-        <option value="a"${tu==="a"?" selected":""}>Almoço</option>
-        <option value="j"${tu==="j"?" selected":""}>Jantar</option>
+  h+=`<div class="sec" style="background:var(--gold-bg);border-left:4px solid var(--gold)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="sec-title" style="margin-bottom:0;color:var(--gold)">🍽️ Turno</div>
+      <select onchange="mudarTurnoDia(this.value)" style="font-size:14px;font-weight:800;padding:8px 14px;border-radius:var(--rs);border:2px solid var(--gold-br);background:white;color:var(--gold);cursor:pointer;font-family:inherit;box-shadow:var(--shadow)">
+        <option value="a"${tu==="a"?" selected":""}>☀️ Almoço</option>
+        <option value="j"${tu==="j"?" selected":""}>🌙 Jantar</option>
       </select>
     </div>
   </div>`;
