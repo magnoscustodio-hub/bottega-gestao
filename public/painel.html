@@ -529,7 +529,7 @@ function tituloForaDoTurno(hi){
 }
 function chipComHorario(nome,cor,hi){
   const icone=hi.pontual?"📌":"⏰";
-  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${estiloForaDoTurno(hi)}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
+  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
 }
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
@@ -911,7 +911,7 @@ function renderEsc(d,mi){
   // TURNO — auxílio visual pra esta tela do dia (não filtra dados, não trava edição)
   h+=`<div class="sec" style="background:var(--gold-bg);border-left:4px solid var(--gold)">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div class="sec-title" style="margin-bottom:0;color:var(--gold)">🍽️ Turno</div>
+      <div class="sec-title" style="margin-bottom:0;color:var(--gold);font-size:15px;letter-spacing:.02em">🍽️ Turno</div>
       <select onchange="mudarTurnoDia(this.value)" style="font-size:14px;font-weight:800;padding:8px 14px;border-radius:var(--rs);border:2px solid var(--gold-br);background:white;color:var(--gold);cursor:pointer;font-family:inherit;box-shadow:var(--shadow)">
         <option value="a"${tu==="a"?" selected":""}>☀️ Almoço</option>
         <option value="j"${tu==="j"?" selected":""}>🌙 Jantar</option>
@@ -948,7 +948,7 @@ function renderEsc(d,mi){
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!isGarcom&&sk){
           if(hi){
-            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor};${estiloForaDoTurno(hi)}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
           }
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
