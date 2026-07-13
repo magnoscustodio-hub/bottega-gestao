@@ -860,7 +860,6 @@ function renderEsc(d,mi){
 
   // ALERTAS
   if(ocp>=85) h+=`<div class="albox aldn">🔥 <span><strong>Alta demanda</strong> — todas as praças em operação. Considere chamar extras.</span></div>`;
-  if(isDom&&totalF>0) h+=`<div class="albox alin">💰 <div><strong>Domingo — considerar comprar folgas</strong><br><span style="font-size:11px;font-weight:500">${Object.values(folgasHoje).flat().join(", ")} de folga.</span></div></div>`;
   h+=feriasBanner(mi);
 
   // AUSÊNCIAS
