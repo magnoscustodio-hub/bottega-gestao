@@ -678,6 +678,38 @@ function renderModalEscala(d,mi,dist){
     </div>`;
   });
 
+  h+=`<div class="sec-title" style="margin:14px 0 8px">Suporte</div>`;
+  [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([sk,sl])=>{
+    const eqSup=EQ[sk];
+    const isAberta=pracaSel===sk;
+    h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:800;color:var(--text)">${eqSup.e} ${sl}</span>
+        <button onclick="window._pracaEditSel='${isAberta?"":sk}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${isAberta?"8px":"0"}">
+        ${(dist[sk]||[]).map(g=>{
+          const info=todosDisp.find(x=>x.nome===g);
+          const cor=info?info.cor:eqSup.c;
+          return `<span style="background:${cor}18;border:1px solid ${cor}50;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;color:${cor};display:inline-flex;align-items:center;gap:4px">${g}<button onclick="removerDaPraca('${sk}','${g}',${d},${mi})" style="background:none;border:none;cursor:pointer;color:${cor};font-size:14px;line-height:1;padding:0">×</button></span>`;
+        }).join("")}
+      </div>
+      ${isAberta?`<div style="border-top:1px solid var(--border);padding-top:8px">
+        ${Object.keys(EQ).map(k=>{
+          const eq=EQ[k];
+          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!(dist[sk]||[]).includes(g));
+          if(!dispSet.length) return "";
+          return `<div style="margin-bottom:6px">
+            <div style="font-size:10px;font-weight:700;color:${eq.c};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${eq.l}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px">
+              ${dispSet.map(g=>`<button onclick="moverParaPraca('${sk}','${g}',${d},${mi})" style="background:${eq.c}15;border:1.5px solid ${eq.c}50;border-radius:20px;padding:5px 12px;font-size:12px;color:${eq.c};cursor:pointer;font-weight:600;font-family:inherit">${g}</button>`).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>`:""}
+    </div>`;
+  });
+
   h+=`<div class="macts">
     <button onclick="window._pracaEditSel=null;cMod()">Cancelar</button>
     <button class="bok" onclick="window._pracaEditSel=null;salvarEscalaManual(${d},${mi})">Salvar ✓</button>
@@ -989,8 +1021,11 @@ function renderEsc(d,mi){
   }
   [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([k,l])=>{
     const eq=EQ[k];
-    // excluir quem foi alocado manualmente nas praças
-    const disp=gDisp(d,mi,k).filter(g=>!alocadosNasPracas.has(g));
+    // nativos do setor que não foram alocados em outro lugar (praça ou outro suporte)
+    // + quem foi manualmente colocado aqui pelo modal "Editar escala"
+    const nativos=gDisp(d,mi,k).filter(g=>!alocadosNasPracas.has(g));
+    const manualAqui=dist[k]||[];
+    const disp=[...new Set([...nativos,...manualAqui])];
     const nx=disp.length<eq.min;
     const extras=getExtras(k,d,mi);
     h+=`<div class="pc${nx&&extras.length===0?" px":""}">
