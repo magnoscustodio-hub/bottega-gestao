@@ -601,7 +601,7 @@ function distribuicaoAutomatica(dg){
   PD.filter(p=>!p.fch&&!p.fimSemana).forEach(p=>{dg.forEach(g=>{if(!al.has(g)){dist[p.id].push(g);al.add(g);}});});
   return dist;
 }
-function openEditarEscala(d,mi){
+function openEditarEscala(d,mi,focoInicial){
   const escManual=getEscalaManual(d,mi);
   let distAtual;
   if(escManual){
@@ -610,6 +610,7 @@ function openEditarEscala(d,mi){
     const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
     distAtual=distribuicaoAutomatica(dg);
   }
+  window._pracaEditSel=focoInicial||null;
   renderModalEscala(d,mi,distAtual);
 }
 function getTodosDisponiveis(d,mi){
@@ -682,22 +683,29 @@ function renderModalEscala(d,mi,dist){
   [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([sk,sl])=>{
     const eqSup=EQ[sk];
     const isAberta=pracaSel===sk;
+    // "já alocado" no Suporte precisa somar quem é nativo do setor (nunca foi
+    // movido, mas está lá por padrão) com quem foi manualmente colocado ali —
+    // senão o card aparece vazio no topo pra quem nunca foi mexido.
+    const manualAqui=dist[sk]||[];
+    const nativosAqui=eqSup.m.filter(g=>!eFolga(g,d,mi)&&!alocados.has(g));
+    const jaAlocadoAqui=[...new Set([...nativosAqui,...manualAqui])];
     h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:800;color:var(--text)">${eqSup.e} ${sl}</span>
         <button onclick="window._pracaEditSel='${isAberta?"":sk}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${isAberta?"8px":"0"}">
-        ${(dist[sk]||[]).map(g=>{
+        ${jaAlocadoAqui.map(g=>{
           const info=todosDisp.find(x=>x.nome===g);
           const cor=info?info.cor:eqSup.c;
-          return `<span style="background:${cor}18;border:1px solid ${cor}50;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;color:${cor};display:inline-flex;align-items:center;gap:4px">${g}<button onclick="removerDaPraca('${sk}','${g}',${d},${mi})" style="background:none;border:none;cursor:pointer;color:${cor};font-size:14px;line-height:1;padding:0">×</button></span>`;
+          const podeRemover=manualAqui.includes(g);
+          return `<span style="background:${cor}18;border:1px solid ${cor}50;border-radius:20px;padding:4px 10px;font-size:12px;font-weight:600;color:${cor};display:inline-flex;align-items:center;gap:4px">${g}${podeRemover?`<button onclick="removerDaPraca('${sk}','${g}',${d},${mi})" style="background:none;border:none;cursor:pointer;color:${cor};font-size:14px;line-height:1;padding:0">×</button>`:""}</span>`;
         }).join("")}
       </div>
       ${isAberta?`<div style="border-top:1px solid var(--border);padding-top:8px">
         ${Object.keys(EQ).map(k=>{
           const eq=EQ[k];
-          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!(dist[sk]||[]).includes(g));
+          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!jaAlocadoAqui.includes(g));
           if(!dispSet.length) return "";
           return `<div style="margin-bottom:6px">
             <div style="font-size:10px;font-weight:700;color:${eq.c};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${eq.l}</div>
@@ -970,7 +978,7 @@ function renderEsc(d,mi){
     const extras=getExtras(p.id,d,mi);
     if(isFch){h+=`<div class="pc pf"><div class="pn">${p.n}</div><div class="ps">Fechada · abre &gt;85%</div></div>`;return;}
     h+=`<div class="pc${p.pref?" pp":nx&&extras.length===0?" px":""}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span>${p.pref?bdg("pref","in"):""}</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span style="display:flex;align-items:center;gap:6px">${p.pref?bdg("pref","in"):""}<button class="edit-only" onclick="openEditarEscala(${d},${mi},'${p.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${p.n}">✏️</button></span></div>
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
@@ -1030,7 +1038,7 @@ function renderEsc(d,mi){
     h+=`<div class="pc${nx&&extras.length===0?" px":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         <div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c}"></span><span class="pn">${l}</span></div>
-        ${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}
+        <span style="display:flex;align-items:center;gap:6px">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only" onclick="openEditarEscala(${d},${mi},'${k}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
       <div>${disp.map(g=>{const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);}).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
