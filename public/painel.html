@@ -49,6 +49,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
    não edita nada é o RLS do banco, não esta regra de CSS. */
 body.nivel-consulta .edit-only{display:none!important}
 
+/* Configurações (funcionários/praças/setores/logo): só Master edita.
+   Igual acima, é só conforto de interface — o RLS já bloqueia gerencial
+   e consulta de escrever nessas tabelas mesmo sem essa regra. */
+body.nivel-nao-master .master-only{display:none!important}
+
 /* CONTROLS */
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end}
 .ctrl label{display:block;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
@@ -284,6 +289,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
       <button class="menu-btn" onclick="openFolgasMes()">📅 Folgas</button>
       <button class="menu-btn" onclick="openHistorico()">📊 Ausências</button>
       <button class="menu-btn edit-only" onclick="openHorariosEspeciais()">⏰ Horários</button>
+      <button class="menu-btn" onclick="openConfiguracoes()">⚙️ Config.</button>
     </div>
   </div>
 
@@ -325,6 +331,8 @@ let FJ=[];
 let FOLGAS={};
 let FERIAS={};
 let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
+let HISTORICO_FOLGAS_VENDIDAS=[];
+let RESTAURANTE_LOGO_URL=null;
 let cm=6,cy=2026,dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
 let TURNO="a";
@@ -680,7 +688,7 @@ function renderModalEscala(d,mi,dist){
   });
 
   h+=`<div class="sec-title" style="margin:14px 0 8px">Suporte</div>`;
-  [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([sk,sl])=>{
+  Object.keys(EQ).filter(k=>k!=="garcons").map(k=>[k,EQ[k].l]).forEach(([sk,sl])=>{
     const eqSup=EQ[sk];
     const isAberta=pracaSel===sk;
     // "já alocado" no Suporte precisa somar quem é nativo do setor (nunca foi
@@ -1026,7 +1034,7 @@ function renderEsc(d,mi){
       </div>
     </div>`;
   }
-  [["bar","Bar"],["rec","Recepção"],["boqb","Boqueta Bebida"],["boqc","Boqueta Comida"],["fax","Faxina"]].forEach(([k,l])=>{
+  Object.keys(EQ).filter(k=>k!=="garcons").map(k=>[k,EQ[k].l]).forEach(([k,l])=>{
     const eq=EQ[k];
     // nativos do setor que não foram alocados em outro lugar (praça ou outro suporte)
     // + quem foi manualmente colocado aqui pelo modal "Editar escala"
@@ -1167,19 +1175,22 @@ function salvarEdicaoAusencia(nome,d,mi){
 
 // HISTÓRICO
 function openHistorico(){renderHistorico("todos","todos");}
-function renderHistorico(filtroFunc,filtroMes){
-  const funcs=[...new Set(HISTORICO.map(h=>h.func))].sort();
-  const meses=[...new Set(HISTORICO.map(h=>h.ds.slice(0,7)))].sort();
-  let dados=HISTORICO;
+function openRelatorioAtestados(){renderHistorico("todos","todos","Atestado médico");}
+function renderHistorico(filtroFunc,filtroMes,motivoFixo){
+  const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
+  const argMotivo=motivoFixo?`'${motivoFixo}'`:"null";
+  const funcs=[...new Set(base.map(h=>h.func))].sort();
+  const meses=[...new Set(base.map(h=>h.ds.slice(0,7)))].sort();
+  let dados=base;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
-    <h3>📊 Histórico de Ausências</h3>
+    <h3>${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
     <p class="msub">${dados.length} registro${dados.length!==1?"s":""} encontrado${dados.length!==1?"s":""}</p>
     <div class="filter-row">
-      <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
-      <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value,${argMotivo})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value,${argMotivo})"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma ausência registrada.</div>`;}
   else{
@@ -1405,6 +1416,341 @@ async function removerHorarioPontualUI(nome,d,mi){
   renderModalHorarioPontual(d,mi);renderEsc(d,mi);
   showToast("✅ Horário pontual de "+nome+" removido!");
   await persistirRemoverHorarioPontual(nome,ds);
+}
+
+// CONFIGURAÇÕES (equipe/logo/praças/setores) + RELATÓRIOS
+function openConfiguracoes(){
+  window._configPracaAberta=null;window._configSetorAberto=null;window._configFuncSetorAberto=null;
+  renderModalConfiguracoes();
+}
+function renderModalConfiguracoes(){
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <h3 style="margin-bottom:0">⚙️ Configurações</h3>
+      <button onclick="cMod()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;font-weight:700">✕</button>
+    </div>
+    <p class="msub">Ajustes do restaurante e relatórios.</p>
+    <button class="fs-func-btn" onclick="abrirConfigFuncionarios()"><span>👥 Funcionários</span><span style="color:var(--border-s)">›</span></button>
+    <button class="fs-func-btn" onclick="abrirConfigLogo()"><span>🖼️ Logo do restaurante</span><span style="color:var(--border-s)">›</span></button>
+    <button class="fs-func-btn" onclick="abrirConfigPracasSetores()"><span>🗺️ Praças e áreas de suporte</span><span style="color:var(--border-s)">›</span></button>
+    <div class="sec-title" style="margin:16px 0 8px">📋 Relatórios</div>
+    <button class="fs-func-btn" onclick="cMod();openHistorico()"><span>📊 Faltas/ausências</span><span style="color:var(--border-s)">›</span></button>
+    <button class="fs-func-btn" onclick="cMod();openRelatorioAtestados()"><span>🩺 Atestados médicos</span><span style="color:var(--border-s)">›</span></button>
+    <button class="fs-func-btn" onclick="cMod();openRelatorioFolgasVendidas()"><span>💰 Vendas de folga de domingo</span><span style="color:var(--border-s)">›</span></button>
+    <div class="macts"><button onclick="cMod()">Fechar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+
+// --- Funcionários ---
+function abrirConfigFuncionarios(){
+  window._configFuncSetorAberto=null;
+  renderConfigFuncionarios();
+}
+function renderConfigFuncionarios(){
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <p class="msub">Adicionar ou remover funcionários do restaurante.</p>`;
+  Object.keys(EQ).forEach(k=>{
+    const eq=EQ[k],aberto=window._configFuncSetorAberto===k;
+    h+=`<div class="fs-setor">
+      <div class="fs-setor-hd" onclick="window._configFuncSetorAberto='${aberto?"":k}';renderConfigFuncionarios()">
+        <div class="fs-setor-left"><span style="font-size:20px">${eq.e}</span>
+          <div><div class="fs-setor-nm">${eq.l}</div><div class="fs-setor-sub">${eq.m.length} funcionário${eq.m.length!==1?"s":""}</div></div>
+        </div>
+        <span style="font-size:22px;color:var(--text3);transition:transform .2s;${aberto?"transform:rotate(90deg)":""}">›</span>
+      </div>
+      ${aberto?`<div class="fs-setor-body">${eq.m.length?eq.m.map(nome=>`
+        <div class="fs-func-btn" style="cursor:default">
+          <span>${nome}</span>
+          <button class="master-only" onclick="confirmarRemoverFuncionario('${nome}')" style="background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
+        </div>`).join(""):`<div style="padding:8px 0;color:var(--text3);font-size:12px">Nenhum funcionário neste setor.</div>`}
+      </div>`:""}
+    </div>`;
+  });
+  h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
+    <div class="sec-title" style="margin-bottom:8px">+ Adicionar funcionário</div>
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
+    <input id="nf-nome" type="text" class="minp" placeholder="Nome completo">
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cargo (opcional)</label>
+    <input id="nf-cargo" type="text" class="minp" placeholder="Ex: Garçom, Recepcionista...">
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Setor</label>
+    <select id="nf-setor" class="msel">${Object.keys(EQ).map(k=>`<option value="${k}">${EQ[k].l}</option>`).join("")}</select>
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Praça preferencial (opcional)</label>
+    <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}">${p.n}</option>`).join("")}</select>
+    <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarFuncionario()">+ Adicionar</button>
+  </div>
+  <div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function adicionarFuncionario(){
+  const nome=document.getElementById("nf-nome").value.trim();
+  const cargo=document.getElementById("nf-cargo").value.trim();
+  const setorChave=document.getElementById("nf-setor").value;
+  const pracaId=document.getElementById("nf-praca").value;
+  if(!nome){avisoErro("Informe o nome do funcionário.");return;}
+  const setorId=EQ[setorChave]&&EQ[setorChave].id;
+  if(!setorId){avisoErro("Setor inválido.");return;}
+  const{error}=await supabaseClient.from("funcionarios").insert({
+    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,
+  });
+  if(error){avisoErro("Não foi possível adicionar "+nome+".");return;}
+  showToast("✅ "+nome+" adicionado(a)!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigFuncionarios();
+}
+function confirmarRemoverFuncionario(nome){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  if(!window.confirm(nome+" será removido(a), junto com todo o histórico de folgas, ausências e horários especiais dele(a). Essa ação não pode ser desfeita. Continuar?"))return;
+  removerFuncionario(nome,funcionarioId);
+}
+async function removerFuncionario(nome,funcionarioId){
+  const{error}=await supabaseClient.from("funcionarios").delete().eq("id",funcionarioId);
+  if(error){avisoErro("Não foi possível remover "+nome+".");return;}
+  showToast("🗑️ "+nome+" removido(a).");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigFuncionarios();
+}
+
+// --- Logo do restaurante ---
+function abrirConfigLogo(){renderConfigLogo();}
+function renderConfigLogo(){
+  const imgAtualEl=document.querySelector(".logo-wrap img");
+  const logoAtualSrc=RESTAURANTE_LOGO_URL||(imgAtualEl?imgAtualEl.src:"");
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <div class="cal-modal-hd"><h3>🖼️ Logo do restaurante</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <p class="msub">Essa imagem aparece no topo do painel.</p>
+    <div style="display:flex;justify-content:center;margin-bottom:16px">
+      <img src="${logoAtualSrc}" style="width:96px;height:96px;object-fit:cover;border-radius:16px;border:1.5px solid var(--border);box-shadow:var(--shadow)">
+    </div>
+    <div class="master-only">
+      <input type="file" id="logo-arquivo" accept="image/*" class="minp" style="padding:8px">
+      <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="enviarLogo()">Enviar novo logo</button>
+    </div>
+    <div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function enviarLogo(){
+  const input=document.getElementById("logo-arquivo");
+  const arquivo=input.files&&input.files[0];
+  if(!arquivo){avisoErro("Escolha uma imagem.");return;}
+  const ext=(arquivo.name.split(".").pop()||"png").toLowerCase();
+  const caminho=`${RESTAURANTE_ID}/logo.${ext}`;
+  const{error:uploadError}=await supabaseClient.storage.from("logos").upload(caminho,arquivo,{upsert:true});
+  if(uploadError){avisoErro("Não foi possível enviar o logo.");return;}
+  const{data:pub}=supabaseClient.storage.from("logos").getPublicUrl(caminho);
+  const url=pub.publicUrl+"?t="+Date.now();
+  const{error:updError}=await supabaseClient.from("restaurantes").update({logo_url:url}).eq("id",RESTAURANTE_ID);
+  if(updError){avisoErro("Logo enviado, mas não foi possível salvar no restaurante.");return;}
+  RESTAURANTE_LOGO_URL=url;
+  aplicarLogoNoHeader();
+  showToast("✅ Logo atualizado!");
+  renderConfigLogo();
+}
+
+// --- Praças e áreas de suporte ---
+function abrirConfigPracasSetores(){
+  window._configPracaSetorTab="pracas";
+  window._configPracaAberta=null;window._configSetorAberto=null;
+  renderConfigPracasSetores();
+}
+function renderConfigPracasSetores(){
+  const aba=window._configPracaSetorTab||"pracas";
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>🗺️ Praças e áreas de suporte</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button onclick="window._configPracaSetorTab='pracas';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="pracas"?"var(--gold)":"var(--border-s)"};background:${aba==="pracas"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="pracas"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Praças</button>
+      <button onclick="window._configPracaSetorTab='setores';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="setores"?"var(--gold)":"var(--border-s)"};background:${aba==="setores"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="setores"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Áreas de suporte</button>
+    </div>`;
+  if(aba==="pracas"){
+    PD.forEach(p=>{
+      const aberta=window._configPracaAberta===p.id;
+      h+=`<div class="fs-setor">
+        <div class="fs-setor-hd" onclick="window._configPracaAberta='${aberta?"":p.id}';renderConfigPracasSetores()">
+          <div class="fs-setor-left"><div><div class="fs-setor-nm">${p.n}</div><div class="fs-setor-sub">Cap. ${p.tl} pax · ${p.fimSemana?"só fim de semana":"todo dia"}</div></div></div>
+          <span style="font-size:22px;color:var(--text3);transition:transform .2s;${aberta?"transform:rotate(90deg)":""}">›</span>
+        </div>
+        ${aberta?`<div class="fs-setor-body" style="padding:12px">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
+          <input class="minp" id="ep-nome-${p.id}" value="${p.n}">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Mesas</label>
+          <input class="minp" type="number" id="ep-mesas-${p.id}" value="${p.tm}">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Lugares</label>
+          <input class="minp" type="number" id="ep-lugares-${p.id}" value="${p.tl}">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="ep-fds-${p.id}" ${p.fimSemana?"checked":""}> Só abre fim de semana</label>
+          <div class="master-only" style="display:flex;gap:8px">
+            <button class="bok" style="flex:1;padding:8px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarPraca('${p.id}')">Salvar</button>
+            <button onclick="confirmarRemoverPraca('${p.id}','${p.n}')" style="flex:1;background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:var(--rs);padding:8px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
+          </div>
+        </div>`:""}
+      </div>`;
+    });
+    h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
+      <div class="sec-title" style="margin-bottom:8px">+ Nova praça</div>
+      <input class="minp" id="np-nome" placeholder="Nome da praça">
+      <input class="minp" type="number" id="np-mesas" placeholder="Mesas">
+      <input class="minp" type="number" id="np-lugares" placeholder="Lugares">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="np-fds"> Só abre fim de semana</label>
+      <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarPraca()">+ Adicionar praça</button>
+    </div>`;
+  } else {
+    Object.keys(EQ).filter(k=>k!=="garcons").forEach(k=>{
+      const eq=EQ[k],aberto=window._configSetorAberto===k;
+      h+=`<div class="fs-setor">
+        <div class="fs-setor-hd" onclick="window._configSetorAberto='${aberto?"":k}';renderConfigPracasSetores()">
+          <div class="fs-setor-left"><span style="font-size:20px">${eq.e}</span><div><div class="fs-setor-nm">${eq.l}</div><div class="fs-setor-sub">${eq.m.length} funcionário${eq.m.length!==1?"s":""} · mínimo ${eq.min}</div></div></div>
+          <span style="font-size:22px;color:var(--text3);transition:transform .2s;${aberto?"transform:rotate(90deg)":""}">›</span>
+        </div>
+        ${aberto?`<div class="fs-setor-body" style="padding:12px">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
+          <input class="minp" id="es-nome-${k}" value="${eq.l}">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Emoji</label>
+          <input class="minp" id="es-emoji-${k}" value="${eq.e}">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cor (hex)</label>
+          <input class="minp" id="es-cor-${k}" value="${eq.c}">
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Mínimo de funcionários</label>
+          <input class="minp" type="number" id="es-min-${k}" value="${eq.min}">
+          <div class="master-only" style="display:flex;gap:8px">
+            <button class="bok" style="flex:1;padding:8px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarSetor('${k}')">Salvar</button>
+            <button onclick="confirmarRemoverSetor('${k}','${eq.l}')" style="flex:1;background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:var(--rs);padding:8px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
+          </div>
+        </div>`:""}
+      </div>`;
+    });
+    h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
+      <div class="sec-title" style="margin-bottom:8px">+ Nova área de suporte</div>
+      <input class="minp" id="ns-nome" placeholder="Nome (ex: Copa)">
+      <input class="minp" id="ns-emoji" placeholder="Emoji (ex: 🍳)">
+      <input class="minp" id="ns-cor" placeholder="Cor hex (ex: #8855AA)">
+      <input class="minp" type="number" id="ns-min" placeholder="Mínimo de funcionários" value="1">
+      <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarSetor()">+ Adicionar área</button>
+    </div>`;
+  }
+  h+=`<div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function adicionarPraca(){
+  const nome=document.getElementById("np-nome").value.trim();
+  const mesas=parseInt(document.getElementById("np-mesas").value)||0;
+  const lugares=parseInt(document.getElementById("np-lugares").value)||0;
+  const fimSemana=document.getElementById("np-fds").checked;
+  if(!nome){avisoErro("Informe o nome da praça.");return;}
+  const{error}=await supabaseClient.from("pracas").insert({restaurante_id:RESTAURANTE_ID,nome,mesas,lugares,fim_semana:fimSemana,ordem:PD.length});
+  if(error){avisoErro("Não foi possível adicionar a praça.");return;}
+  showToast("✅ Praça adicionada!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+async function salvarPraca(id){
+  const nome=document.getElementById(`ep-nome-${id}`).value.trim();
+  const mesas=parseInt(document.getElementById(`ep-mesas-${id}`).value)||0;
+  const lugares=parseInt(document.getElementById(`ep-lugares-${id}`).value)||0;
+  const fimSemana=document.getElementById(`ep-fds-${id}`).checked;
+  if(!nome){avisoErro("Informe o nome da praça.");return;}
+  const{error}=await supabaseClient.from("pracas").update({nome,mesas,lugares,fim_semana:fimSemana}).eq("id",id);
+  if(error){avisoErro("Não foi possível salvar a praça.");return;}
+  showToast("✅ Praça atualizada!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+function confirmarRemoverPraca(id,nome){
+  if(!window.confirm(`Remover a praça "${nome}"? Essa ação não pode ser desfeita.`))return;
+  removerPraca(id);
+}
+async function removerPraca(id){
+  const{error}=await supabaseClient.from("pracas").delete().eq("id",id);
+  if(error){avisoErro("Não foi possível remover a praça.");return;}
+  showToast("🗑️ Praça removida.");
+  window._configPracaAberta=null;
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+function gerarChaveSetor(nome){
+  const base=nome.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"").slice(0,12)||"setor";
+  let chave=base,n=2;
+  while(EQ[chave]){chave=base+n;n++;}
+  return chave;
+}
+async function adicionarSetor(){
+  const nome=document.getElementById("ns-nome").value.trim();
+  const emoji=document.getElementById("ns-emoji").value.trim();
+  const cor=document.getElementById("ns-cor").value.trim();
+  const min=parseInt(document.getElementById("ns-min").value)||1;
+  if(!nome){avisoErro("Informe o nome da área.");return;}
+  const chave=gerarChaveSetor(nome);
+  const{error}=await supabaseClient.from("setores").insert({restaurante_id:RESTAURANTE_ID,chave,nome,emoji:emoji||null,cor:cor||null,min_funcionarios:min,ordem:Object.keys(EQ).length});
+  if(error){avisoErro("Não foi possível adicionar a área.");return;}
+  showToast("✅ Área adicionada!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+async function salvarSetor(chave){
+  const setorId=EQ[chave].id;
+  const nome=document.getElementById(`es-nome-${chave}`).value.trim();
+  const emoji=document.getElementById(`es-emoji-${chave}`).value.trim();
+  const cor=document.getElementById(`es-cor-${chave}`).value.trim();
+  const min=parseInt(document.getElementById(`es-min-${chave}`).value)||1;
+  if(!nome){avisoErro("Informe o nome da área.");return;}
+  const{error}=await supabaseClient.from("setores").update({nome,emoji:emoji||null,cor:cor||null,min_funcionarios:min}).eq("id",setorId);
+  if(error){avisoErro("Não foi possível salvar a área.");return;}
+  showToast("✅ Área atualizada!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+function confirmarRemoverSetor(chave,nome){
+  const eq=EQ[chave];
+  if(eq.m.length>0){avisoErro(`"${nome}" ainda tem ${eq.m.length} funcionário(s) — mova ou remova ${eq.m.length>1?"eles":"ele(a)"} primeiro.`);return;}
+  if(!window.confirm(`Remover a área "${nome}"? Essa ação não pode ser desfeita.`))return;
+  removerSetor(chave);
+}
+async function removerSetor(chave){
+  const setorId=EQ[chave].id;
+  const{error}=await supabaseClient.from("setores").delete().eq("id",setorId);
+  if(error){avisoErro("Não foi possível remover a área.");return;}
+  showToast("🗑️ Área removida.");
+  window._configSetorAberto=null;
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigPracasSetores();
+}
+
+// --- Relatório: Vendas de folga de domingo ---
+function openRelatorioFolgasVendidas(){renderRelatorioFolgasVendidas("todos","todos");}
+function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
+  const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.func))].sort();
+  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))].sort();
+  let dados=HISTORICO_FOLGAS_VENDIDAS;
+  if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
+  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <h3>💰 Vendas de Folga de Domingo</h3>
+    <p class="msub">${dados.length} venda${dados.length!==1?"s":""} registrada${dados.length!==1?"s":""}</p>
+    <div class="filter-row">
+      <select onchange="renderRelatorioFolgasVendidas(this.value,document.getElementById('fil-mes-fv').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      <select id="fil-mes-fv" onchange="renderRelatorioFolgasVendidas('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+    </div>`;
+  if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma venda de folga registrada.</div>`;}
+  else{
+    h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td></tr>`).join("")}</tbody></table>`;
+    if(filtroFunc==="todos"){
+      const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
+      h+=`<div style="margin-bottom:12px"><div class="sec-title" style="margin-bottom:8px">Quem mais vendeu</div>${Object.entries(cont).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span></div>`).join("")}</div>`;
+    }
+  }
+  h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div>`;
+  h+=`</div></div>`;
+  document.getElementById("modal").innerHTML=h;
 }
 
 function cMod(){document.getElementById("modal").innerHTML="";}
@@ -1695,6 +2041,41 @@ function agConfExcluir(id,todos){
   showToast(todos?"🗑️ Série excluída":"🗑️ Excluído");
 }
 
+async function carregarEquipeEPracas(){
+  const{data:setoresRows}=await supabaseClient
+    .from("setores")
+    .select("*, funcionarios(id,nome,praca_preferencial_id)")
+    .eq("restaurante_id",RESTAURANTE_ID)
+    .order("ordem");
+
+  EQ={};FUNC_ID_POR_NOME={};
+  const pracaPreferidaPorFuncionario={};
+  (setoresRows||[]).forEach(s=>{
+    EQ[s.chave]={id:s.id,l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,m:[]};
+    (s.funcionarios||[]).forEach(f=>{
+      EQ[s.chave].m.push(f.nome);
+      FUNC_ID_POR_NOME[f.nome]=f.id;
+      if(f.praca_preferencial_id){
+        if(!pracaPreferidaPorFuncionario[f.praca_preferencial_id])pracaPreferidaPorFuncionario[f.praca_preferencial_id]=[];
+        pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);
+      }
+    });
+  });
+
+  const{data:pracasRows}=await supabaseClient
+    .from("pracas").select("*").eq("restaurante_id",RESTAURANTE_ID).order("ordem");
+  PD=(pracasRows||[]).map(p=>({
+    id:p.id,n:p.nome,pref:false,fch:false,
+    gc:pracaPreferidaPorFuncionario[p.id]||[],
+    mesas:"",tm:p.mesas,tl:p.lugares,fimSemana:!!p.fim_semana,
+  }));
+  recalcTotais();
+}
+function aplicarLogoNoHeader(){
+  const img=document.querySelector(".logo-wrap img");
+  if(img&&RESTAURANTE_LOGO_URL)img.src=RESTAURANTE_LOGO_URL;
+}
+
 async function carregarHistorico(){
   const{data,error}=await supabaseClient
     .from("ausencias")
@@ -1710,6 +2091,19 @@ async function carregarHistorico(){
   // Férias é um status à parte — não conta como ausência/falta em nenhuma listagem.
   HISTORICO=linhas.filter(h=>h.motivo!=="Férias");
   FERIAS_ROWS=linhas.filter(h=>h.motivo==="Férias");
+}
+
+async function carregarHistoricoFolgasVendidas(){
+  const{data,error}=await supabaseClient
+    .from("folgas_vendidas")
+    .select("data,funcionarios(nome)")
+    .order("data");
+  if(error){avisoErro("Não foi possível carregar o histórico de vendas de folga.");return;}
+  HISTORICO_FOLGAS_VENDIDAS=(data||[]).map(r=>({
+    func:r.funcionarios?r.funcionarios.nome:"",
+    ds:r.data,
+    setor:getSetorFunc(r.funcionarios?r.funcionarios.nome:""),
+  })).filter(h=>h.func);
 }
 
 function recalcAusenciasDoMes(){
@@ -1832,32 +2226,17 @@ async function boot(){
     NIVEL_ACESSO=perfil.nivel_acesso;
   }
   document.body.classList.toggle("nivel-consulta",NIVEL_ACESSO==="consulta");
+  document.body.classList.toggle("nivel-nao-master",NIVEL_ACESSO!=="master");
 
   RESTAURANTE_ID=restaurante.id;
   RESTAURANTE_NOME=restaurante.nome;
+  RESTAURANTE_LOGO_URL=restaurante.logo_url||null;
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";
+  aplicarLogoNoHeader();
 
-  const{data:setoresRows}=await supabaseClient
-    .from("setores")
-    .select("*, funcionarios(id,nome,praca_preferencial_id)")
-    .eq("restaurante_id",RESTAURANTE_ID)
-    .order("ordem");
-
-  EQ={};FUNC_ID_POR_NOME={};
-  const pracaPreferidaPorFuncionario={};
-  (setoresRows||[]).forEach(s=>{
-    EQ[s.chave]={l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,m:[]};
-    (s.funcionarios||[]).forEach(f=>{
-      EQ[s.chave].m.push(f.nome);
-      FUNC_ID_POR_NOME[f.nome]=f.id;
-      if(f.praca_preferencial_id){
-        if(!pracaPreferidaPorFuncionario[f.praca_preferencial_id])pracaPreferidaPorFuncionario[f.praca_preferencial_id]=[];
-        pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);
-      }
-    });
-  });
+  await carregarEquipeEPracas();
 
   const{data:horariosRows}=await supabaseClient
     .from("horarios_especiais")
@@ -1867,15 +2246,6 @@ async function boot(){
     const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome)return;
     HORARIOS[nome]={dias:r.dias,hora:r.hora};
   });
-
-  const{data:pracasRows}=await supabaseClient
-    .from("pracas").select("*").eq("restaurante_id",RESTAURANTE_ID).order("ordem");
-  PD=(pracasRows||[]).map(p=>({
-    id:p.id,n:p.nome,pref:false,fch:false,
-    gc:pracaPreferidaPorFuncionario[p.id]||[],
-    mesas:"",tm:p.mesas,tl:p.lugares,fimSemana:!!p.fim_semana,
-  }));
-  recalcTotais();
 
   const{data:paxRows}=await supabaseClient
     .from("pax_esperado").select("*").eq("restaurante_id",RESTAURANTE_ID);
@@ -1889,6 +2259,7 @@ async function boot(){
   FJ=(fechadosRows||[]).filter(r=>r.turno==="jantar"||r.turno==="todos").map(r=>r.dia_semana);
 
   await carregarHistorico();
+  await carregarHistoricoFolgasVendidas();
   await carregarOperacional();
 
   carregarAgenda();

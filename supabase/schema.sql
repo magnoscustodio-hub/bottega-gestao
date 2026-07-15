@@ -7,6 +7,7 @@ create table if not exists public.restaurantes (
   telefone text,
   endereco text,
   cidade text,
+  logo_url text,
   created_at timestamptz not null default now()
 );
 
@@ -988,3 +989,50 @@ left join public.funcionarios f on f.id = pa.funcionario_id
 where pa.email_login is not null; -- exclui o Master (usa e-mail/senha, não PIN)
 
 grant select on public.funcionarios_login_publico to anon, authenticated;
+
+-- ============================================================
+-- Bucket de Storage "logos" — logo do restaurante (public/painel.html
+-- usa restaurantes.logo_url, com fallback pro logo padrão se vazio).
+-- Convenção de caminho: "<restaurante_id>/<nome do arquivo>".
+-- ============================================================
+
+insert into storage.buckets (id, name, public)
+values ('logos', 'logos', true)
+on conflict (id) do nothing;
+
+create policy "Logos sao publicos para leitura"
+  on storage.objects for select
+  using (bucket_id = 'logos');
+
+create policy "Donos podem enviar o logo do seu restaurante"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'logos'
+    and exists (
+      select 1 from public.restaurantes r
+      where r.owner_id = auth.uid()
+        and (storage.foldername(name))[1] = r.id::text
+    )
+  );
+
+create policy "Donos podem atualizar o logo do seu restaurante"
+  on storage.objects for update
+  using (
+    bucket_id = 'logos'
+    and exists (
+      select 1 from public.restaurantes r
+      where r.owner_id = auth.uid()
+        and (storage.foldername(name))[1] = r.id::text
+    )
+  );
+
+create policy "Donos podem remover o logo do seu restaurante"
+  on storage.objects for delete
+  using (
+    bucket_id = 'logos'
+    and exists (
+      select 1 from public.restaurantes r
+      where r.owner_id = auth.uid()
+        and (storage.foldername(name))[1] = r.id::text
+    )
+  );
