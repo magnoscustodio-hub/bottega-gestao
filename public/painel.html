@@ -620,6 +620,12 @@ function openEditarEscala(d,mi,focoInicial){
   }
   window._pracaEditSel=focoInicial||null;
   renderModalEscala(d,mi,distAtual);
+  if(focoInicial){
+    setTimeout(()=>{
+      const el=document.getElementById("escsel-"+focoInicial);
+      if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+    },80);
+  }
 }
 function getTodosDisponiveis(d,mi){
   // garçons + toda equipe de suporte disponível no dia
@@ -659,7 +665,7 @@ function renderModalEscala(d,mi,dist){
 
   PD.filter(p=>!p.fch&&(!p.fimSemana||isSabDomFer)).forEach(p=>{
     const isAberta=pracaSel===p.id;
-    h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
+    h+=`<div id="escsel-${p.id}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:800;color:var(--text)">${p.n} <span style="font-size:10px;color:var(--text3);font-weight:400">Cap. ${p.tl} pax</span></span>
         <button onclick="window._pracaEditSel='${isAberta?"":p.id}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
@@ -697,7 +703,7 @@ function renderModalEscala(d,mi,dist){
     const manualAqui=dist[sk]||[];
     const nativosAqui=eqSup.m.filter(g=>!eFolga(g,d,mi)&&!alocados.has(g));
     const jaAlocadoAqui=[...new Set([...nativosAqui,...manualAqui])];
-    h+=`<div style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
+    h+=`<div id="escsel-${sk}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:800;color:var(--text)">${eqSup.e} ${sl}</span>
         <button onclick="window._pracaEditSel='${isAberta?"":sk}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
