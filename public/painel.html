@@ -21,6 +21,7 @@
   --red:#B02020;--red-bg:#FEF0EE;--red-br:#E8A8A0;--red-light:#FFF5F5;
   --blue:#1A4A8B;--blue-bg:#EEF3FF;--blue-br:#A8C0F0;--blue-light:#F5F8FF;
   --gold:#B5893A;--gold-bg:#FBF4E8;--gold-br:#E8D4A0;
+  --magenta:#A81E6B;--magenta-bg:#FDF0F7;--magenta-br:#E8A8CC;
 
   --r:14px;--rs:8px;--shadow:0 2px 8px rgba(0,0,0,.08);--shadow-md:0 4px 16px rgba(0,0,0,.12);--shadow-lg:0 8px 32px rgba(0,0,0,.16);
 }
@@ -138,6 +139,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .alwn{background:var(--yellow-light);color:var(--yellow);border-left:4px solid var(--yellow-br)}
 .alin{background:var(--blue-light);color:var(--blue);border-left:4px solid var(--blue)}
 .alor{background:var(--gold-bg);color:var(--gold);border-left:4px solid var(--gold-br)}
+.alev{background:var(--magenta-bg);color:var(--magenta);border-left:4px dashed var(--magenta-br)}
 
 /* FOLGA CARDS */
 .folga-cards{display:flex;flex-direction:column;gap:6px}
@@ -323,6 +325,7 @@ const MN=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto"
 
 // Dados do restaurante logado — populados por boot() a partir do Supabase (nada fica hardcoded)
 let RESTAURANTE_ID=null,RESTAURANTE_NOME="";
+let USER_ID=null;
 // Nível de acesso do usuário logado ('master'/'gerencial'/'consulta'), resolvido em boot().
 let NIVEL_ACESSO="master";
 let FUNC_ID_POR_NOME={};
@@ -860,6 +863,8 @@ function renderEsc(d,mi){
       </div>
     </div>
   </div>`;
+
+  h+=eventoBanner(ds);
 
   if(fchJ){h+=`<div class="sec" style="color:var(--text2);font-size:13px;font-weight:500">🔒 Restaurante fechado. Nenhuma escala necessária.</div></div>`;document.getElementById("esc").innerHTML=h;return;}
 
@@ -1770,6 +1775,7 @@ const AG_TIPOS={
   tarefa: {label:"Tarefa",emoji:"✅",cor:"#1A6B3C",bg:"#E8F5EE",br:"#A8D8BC"},
   compromisso:{label:"Compromisso",emoji:"📌",cor:"#B02020",bg:"#FEF0EE",br:"#E8A8A0"},
   operacao:{label:"Operação",emoji:"🍽️",cor:"#5A1A8B",bg:"#F5EEFF",br:"#C8A8F0"},
+  evento:{label:"Evento",emoji:"🎉",cor:"#A81E6B",bg:"#FDF0F7",br:"#E8A8CC"},
   outro:{label:"Outro",emoji:"📝",cor:"#4A4A4A",bg:"#F2F1EF",br:"#C8C5BE"},
 };
 const DS_SEM=["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
@@ -1778,8 +1784,61 @@ let agFiltro="todos";
 let agEditId=null;
 let agTipo="tarefa";
 
-function salvarAgenda(){try{localStorage.setItem("bt_agenda",JSON.stringify(AGENDA));}catch(e){}}
-function carregarAgenda(){try{const d=localStorage.getItem("bt_agenda");if(d)AGENDA=JSON.parse(d);}catch(e){}}
+function agPodeEditar(c){
+  if(c.criadoPor===USER_ID)return true;
+  return c.visibilidade==="compartilhado"&&NIVEL_ACESSO!=="consulta";
+}
+function agMapeiaLinha(r){
+  return{
+    id:r.id,titulo:r.titulo,data:r.data,hora:r.hora||"",tipo:r.tipo,
+    prioridade:r.prioridade,desc:r.descricao||"",recorrencia:r.recorrencia,
+    grupoId:r.grupo_id,concluido:r.concluido,
+    visibilidade:r.visibilidade,criadoPor:r.criado_por,
+    paxEsperado:r.pax_esperado,pracaId:r.praca_id,
+  };
+}
+async function carregarAgenda(){
+  const{data,error}=await supabaseClient
+    .from("agenda_compromissos")
+    .select("*")
+    .eq("restaurante_id",RESTAURANTE_ID)
+    .order("data");
+  if(error){avisoErro("Não foi possível carregar a agenda.");return;}
+  AGENDA=(data||[]).map(agMapeiaLinha);
+}
+async function migrarAgendaLocalStorage(){
+  if(localStorage.getItem("bt_agenda_migrado"))return;
+  let dadosAntigos=[];
+  try{
+    const d=localStorage.getItem("bt_agenda");
+    if(d)dadosAntigos=JSON.parse(d);
+  }catch(e){}
+  if(!Array.isArray(dadosAntigos)||dadosAntigos.length===0){
+    try{localStorage.setItem("bt_agenda_migrado","1");}catch(e){}
+    return;
+  }
+  const mapaGrupo={};
+  const linhas=dadosAntigos.map(c=>{
+    let grupoId=null;
+    if(c.grupoId){
+      if(!mapaGrupo[c.grupoId])mapaGrupo[c.grupoId]=crypto.randomUUID();
+      grupoId=mapaGrupo[c.grupoId];
+    }
+    return{
+      restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,
+      titulo:c.titulo,data:c.data,hora:c.hora||null,
+      tipo:AG_TIPOS[c.tipo]?c.tipo:"outro",
+      prioridade:c.prioridade||"normal",descricao:c.desc||null,
+      recorrencia:c.recorrencia||"nunca",grupo_id:grupoId,
+      concluido:!!c.concluido,visibilidade:"compartilhado",
+      pax_esperado:null,praca_id:null,
+    };
+  });
+  const{error}=await supabaseClient.from("agenda_compromissos").insert(linhas);
+  if(!error){
+    try{localStorage.setItem("bt_agenda_migrado","1");}catch(e){}
+  }
+}
 function agHoje(){
   const d=new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
@@ -1793,7 +1852,6 @@ function agIsSemana(ds){
 function agFmtData(ds){const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;}
 function agFmtDia(ds){const dt=new Date(ds+"T12:00:00");return DS_SEM[dt.getDay()];}
 function agFmtDiaCompleto(ds){const dt=new Date(ds+"T12:00:00");const[y,m,d]=ds.split("-");return `${DS_SEM[dt.getDay()]}, ${parseInt(d)} de ${MN[parseInt(m)-1]}`;}
-function agGenId(){return Date.now().toString(36)+Math.random().toString(36).slice(2);}
 
 function agGetFiltrados(){
   let l=[...AGENDA];
@@ -1823,18 +1881,18 @@ function agGetFiltrados(){
   return resultado;
 }
 
-function openAgendaNovo(){
-  carregarAgenda();
+async function openAgendaNovo(){
+  await carregarAgenda();
   agEditId=null;agTipo="tarefa";
-  renderAgendaForm({data:agHoje(),hora:"",titulo:"",tipo:"tarefa",prioridade:"normal",recorrencia:"nunca"});
+  renderAgendaForm({data:agHoje(),hora:"",titulo:"",tipo:"tarefa",prioridade:"normal",recorrencia:"nunca",visibilidade:"compartilhado"});
 }
-function openAgenda(){
-  carregarAgenda();
+async function openAgenda(){
+  await carregarAgenda();
   agFiltro="todos";agEditId=null;
   renderAgendaModal();
 }
-function openAgendaSemana(){
-  carregarAgenda();
+async function openAgendaSemana(){
+  await carregarAgenda();
   agFiltro="proximos7";agEditId=null;
   renderAgendaModal();
 }
@@ -1872,9 +1930,9 @@ function renderAgendaModal(){
               </div>
             </div>
             <div style="display:flex;gap:4px;flex-shrink:0">
-              ${!c.concluido?`<button onclick="agConcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--green-br);background:var(--green-bg);cursor:pointer;color:var(--green);font-size:14px;display:flex;align-items:center;justify-content:center" title="Concluir">✓</button>`:`<button onclick="agReabrir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Reabrir">↩</button>`}
-              <button onclick="agEditar('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Editar">✏️</button>
-              <button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="Excluir">×</button>
+              ${agPodeEditar(c)?(!c.concluido?`<button onclick="agConcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--green-br);background:var(--green-bg);cursor:pointer;color:var(--green);font-size:14px;display:flex;align-items:center;justify-content:center" title="Concluir">✓</button>`:`<button onclick="agReabrir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Reabrir">↩</button>`):""}
+              ${agPodeEditar(c)?`<button onclick="agEditar('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Editar">✏️</button>`:""}
+              ${agPodeEditar(c)?`<button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="Excluir">×</button>`:""}
             </div>
           </div>
           ${c.desc&&!c.concluido?`<div style="font-size:12px;color:var(--text2);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:2px">${c.desc}</div>`:""}
@@ -1909,7 +1967,7 @@ function agSetFiltro(f){agFiltro=f;renderAgendaModal();}
 
 function agNovo(){
   agEditId=null;agTipo="tarefa";
-  renderAgendaForm({data:agHoje(),hora:"",titulo:"",desc:"",tipo:"tarefa",prioridade:"normal"});
+  renderAgendaForm({data:agHoje(),hora:"",titulo:"",desc:"",tipo:"tarefa",prioridade:"normal",visibilidade:"compartilhado"});
 }
 function agEditar(id){
   agEditId=id;
@@ -1923,7 +1981,7 @@ function renderAgendaForm(c){
       <h3>${agEditId?"✏️ Editar":"➕ Novo compromisso"}</h3>
       <div class="field" style="margin-bottom:14px"><label>Tipo</label>
         <div class="tipo-grid">${Object.entries(AG_TIPOS).map(([k,t])=>`
-          <button class="tipo-btn${agTipo===k?" sel":""}" style="${agTipo===k?"background:"+t.cor+";border-color:"+t.cor+";":""}" onclick="agSelTipo('${k}','${(c.titulo||"").replace(/'/g,"\'")}','${c.data||agHoje()}','${c.hora||""}','${c.prioridade||"normal"}','${(c.desc||"").replace(/'/g,"\'")}','${c.recorrencia||"nunca"}')">
+          <button class="tipo-btn${agTipo===k?" sel":""}" style="${agTipo===k?"background:"+t.cor+";border-color:"+t.cor+";":""}" onclick="agSelTipo('${k}','${(c.titulo||"").replace(/'/g,"\'")}','${c.data||agHoje()}','${c.hora||""}','${c.prioridade||"normal"}','${(c.desc||"").replace(/'/g,"\'")}','${c.recorrencia||"nunca"}','${c.visibilidade||"compartilhado"}','${c.paxEsperado||""}','${c.pracaId||""}')">
             ${t.emoji}<br><span style="font-size:10px">${t.label}</span>
           </button>`).join("")}
         </div>
@@ -1960,12 +2018,33 @@ function renderAgendaForm(c){
           </select>
         </div>
       </div>
+      ${agTipo==="evento"?`
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Pax esperado</label>
+          <input type="number" id="ag-pax" min="0" placeholder="0" value="${c.paxEsperado||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Praça/Locação</label>
+          <select id="ag-praca" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+            <option value=""${!c.pracaId?" selected":""}>Restaurante todo</option>
+            ${PD.map(p=>`<option value="${p.id}"${c.pracaId===p.id?" selected":""}>${p.n}</option>`).join("")}
+          </select>
+        </div>
+      </div>`:""}
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Visibilidade</label>
+        <select id="ag-vis" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+          <option value="compartilhado"${(c.visibilidade||"compartilhado")==="compartilhado"?" selected":""}>🌐 Compartilhado (equipe de liderança)</option>
+          <option value="pessoal"${c.visibilidade==="pessoal"?" selected":""}>🔒 Pessoal (só eu)</option>
+        </select>
+      </div>
       <div class="macts"><button onclick="renderAgendaModal()">Cancelar</button><button class="bok" onclick="agSalvar()">Salvar</button></div>
     </div></div>`;
 }
-function agSelTipo(k,titulo,data,hora,prior,desc,recor){
+function agSelTipo(k,titulo,data,hora,prior,desc,recor,vis,pax,praca){
   agTipo=k;
-  renderAgendaForm({titulo,data,hora,prioridade:prior,desc,tipo:k,recorrencia:recor||"nunca"});
+  renderAgendaForm({titulo,data,hora,prioridade:prior,desc,tipo:k,recorrencia:recor||"nunca",visibilidade:vis||"compartilhado",paxEsperado:pax?parseInt(pax,10):null,pracaId:praca||""});
 }
 function agParseData(val){
   // aceita DD/MM/AAAA
@@ -1976,7 +2055,7 @@ function agParseData(val){
     if(el) el.value=iso;
   }
 }
-function agSalvar(){
+async function agSalvar(){
   const titulo=document.getElementById("ag-titulo").value.trim();
   // ler data do campo display e converter DD/MM/AAAA → AAAA-MM-DD
   const dispEl=document.getElementById("ag-data-display");
@@ -1987,21 +2066,31 @@ function agSalvar(){
   const tipo=agTipo;
   const prioridade=document.getElementById("ag-prior").value;
   const descEl=document.getElementById("ag-desc");const desc=descEl?descEl.value.trim():"";
+  const visibilidade=document.getElementById("ag-vis").value;
+  const paxEl=document.getElementById("ag-pax");
+  const paxEsperado=tipo==="evento"&&paxEl&&paxEl.value?parseInt(paxEl.value,10):null;
+  const pracaEl=document.getElementById("ag-praca");
+  const pracaId=tipo==="evento"&&pracaEl&&pracaEl.value?pracaEl.value:null;
 
-  // se editando, remove o antigo e suas recorrências geradas
+  // se editando, remove o antigo (e suas recorrências geradas) antes de recriar
   if(agEditId){
     const orig=AGENDA.find(x=>x.id===agEditId);
-    const grupoId=orig?.grupoId||agEditId;
-    AGENDA=AGENDA.filter(x=>x.grupoId!==grupoId&&x.id!==agEditId);
+    let apagados,error;
+    if(orig&&orig.grupoId){
+      ({data:apagados,error}=await supabaseClient.from("agenda_compromissos").delete().eq("grupo_id",orig.grupoId).select("id"));
+    } else {
+      ({data:apagados,error}=await supabaseClient.from("agenda_compromissos").delete().eq("id",agEditId).select("id"));
+    }
+    if(error||!apagados||apagados.length===0){avisoErro("Sem permissão para editar este compromisso.");return;}
   }
 
-  const grupoId=agGenId();
-  const comp={
-    id:agEditId||agGenId(),titulo,data,hora,tipo,prioridade,desc,
-    recorrencia,grupoId:recorrencia!=="nunca"?grupoId:null,
-    concluido:false,
-  };
-  AGENDA.push(comp);
+  const grupoId=recorrencia!=="nunca"?crypto.randomUUID():null;
+  const linhas=[{
+    restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,
+    titulo,data,hora:hora||null,tipo,prioridade,descricao:desc||null,
+    recorrencia,grupo_id:grupoId,concluido:false,
+    visibilidade,pax_esperado:paxEsperado,praca_id:pracaId,
+  }];
 
   // gerar próximas ocorrências (até 6 meses)
   if(recorrencia!=="nunca"){
@@ -2014,18 +2103,34 @@ function agSalvar(){
       else cur.setDate(cur.getDate()+dias);
       if(cur>limite) break;
       const ds=cur.toISOString().split("T")[0];
-      AGENDA.push({id:agGenId(),titulo,data:ds,hora,tipo,prioridade,desc,recorrencia,grupoId,concluido:false});
+      linhas.push({
+        restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,
+        titulo,data:ds,hora:hora||null,tipo,prioridade,descricao:desc||null,
+        recorrencia,grupo_id:grupoId,concluido:false,
+        visibilidade,pax_esperado:paxEsperado,praca_id:pracaId,
+      });
     }
   }
 
-  salvarAgenda();renderAgendaModal();renderEmpty();
+  const{error:insError}=await supabaseClient.from("agenda_compromissos").insert(linhas);
+  if(insError){avisoErro("Não foi possível salvar o compromisso.");return;}
+  await carregarAgenda();
+  renderAgendaModal();renderEmpty();
   const msg=recorrencia!=="nunca"?`✅ Compromisso recorrente criado!`:`✅ ${agEditId?"Atualizado":"Compromisso adicionado"}`;
   showToast(msg);
   agEditId=null;
 }
 
-function agConcluir(id){const c=AGENDA.find(x=>x.id===id);if(c){c.concluido=true;salvarAgenda();renderAgendaModal();renderEmpty();showToast("✅ Concluído!");}}
-function agReabrir(id){const c=AGENDA.find(x=>x.id===id);if(c){c.concluido=false;salvarAgenda();renderAgendaModal();renderEmpty();showToast("↩ Reaberto");}}
+async function agConcluir(id){
+  const{data,error}=await supabaseClient.from("agenda_compromissos").update({concluido:true}).eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para concluir este compromisso.");return;}
+  await carregarAgenda();renderAgendaModal();renderEmpty();showToast("✅ Concluído!");
+}
+async function agReabrir(id){
+  const{data,error}=await supabaseClient.from("agenda_compromissos").update({concluido:false}).eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para reabrir este compromisso.");return;}
+  await carregarAgenda();renderAgendaModal();renderEmpty();showToast("↩ Reaberto");
+}
 function agExcluir(id){
   const c=AGENDA.find(x=>x.id===id);
   const temGrupo=c&&c.grupoId;
@@ -2039,11 +2144,16 @@ function agExcluir(id){
     <div class="macts"><button onclick="renderAgendaModal()">Cancelar</button></div>
   </div></div>`;
 }
-function agConfExcluir(id,todos){
+async function agConfExcluir(id,todos){
   const c=AGENDA.find(x=>x.id===id);
-  if(todos&&c&&c.grupoId) AGENDA=AGENDA.filter(x=>x.grupoId!==c.grupoId);
-  else AGENDA=AGENDA.filter(x=>x.id!==id);
-  salvarAgenda();renderAgendaModal();renderEmpty();
+  let apagados,error;
+  if(todos&&c&&c.grupoId){
+    ({data:apagados,error}=await supabaseClient.from("agenda_compromissos").delete().eq("grupo_id",c.grupoId).select("id"));
+  } else {
+    ({data:apagados,error}=await supabaseClient.from("agenda_compromissos").delete().eq("id",id).select("id"));
+  }
+  if(error||!apagados||apagados.length===0){avisoErro("Sem permissão para excluir este compromisso.");return;}
+  await carregarAgenda();renderAgendaModal();renderEmpty();
   showToast(todos?"🗑️ Série excluída":"🗑️ Excluído");
 }
 
@@ -2138,6 +2248,15 @@ function nomesComE(itens){
   if(itens.length<=1)return itens[0]||"";
   return itens.slice(0,-1).join(", ")+" e "+itens[itens.length-1];
 }
+function eventoBanner(ds){
+  const eventos=AGENDA.filter(c=>c.tipo==="evento"&&c.data===ds&&!c.concluido);
+  if(!eventos.length)return "";
+  return eventos.map(ev=>{
+    const praca=ev.pracaId?(PD.find(p=>p.id===ev.pracaId)?.n||"Restaurante todo"):"Restaurante todo";
+    const pax=ev.paxEsperado||0;
+    return `<div class="albox alev">🎉 <span>Evento: ${ev.titulo} — ${pax} pax — ${praca}</span></div>`;
+  }).join("");
+}
 function feriasBanner(mi,extraStyle){
   const nomes=FERIAS[mi]||[];
   if(!nomes.length)return "";
@@ -2211,6 +2330,7 @@ async function boot(){
   const{data:sessionData}=await supabaseClient.auth.getSession();
   if(!sessionData.session){window.location.href="login";return;}
   const userId=sessionData.session.user.id;
+  USER_ID=userId;
 
   // Caminho do dono (Master) — igual a antes, sem nenhuma mudança de comportamento.
   const{data:restauranteDono,error:restErrorDono}=await supabaseClient
@@ -2268,7 +2388,8 @@ async function boot(){
   await carregarHistoricoFolgasVendidas();
   await carregarOperacional();
 
-  carregarAgenda();
+  await migrarAgendaLocalStorage();
+  await carregarAgenda();
   renderCal();renderEmpty();
 }
 
