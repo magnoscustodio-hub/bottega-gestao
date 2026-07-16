@@ -35,11 +35,11 @@ function Home() {
             <Link className="btn-primary" to="/login">
               Entrar
             </Link>
-            <a className="btn-secondary" href="/onboarding.html">
+            <a className="btn-secondary" href="onboarding.html">
               Cadastrar restaurante
             </a>
           </div>
-          <a className="entry-link-secondary" href="/painel.html">
+          <a className="entry-link-secondary" href="painel.html">
             Escala de funcionários
           </a>
         </div>
