@@ -58,6 +58,12 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .drawer-item:active{background:var(--surface2)}
 .drawer-item.ativo{background:var(--text);color:white}
 
+/* LIGHTBOX (visualizador em tela cheia da imagem do menu do Evento) */
+.lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1100;align-items:center;justify-content:center;overflow:auto}
+.lightbox.aberto{display:flex}
+.lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+.lightbox-close{position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:white;font-size:20px;cursor:pointer;z-index:1101;display:flex;align-items:center;justify-content:center}
+
 /* Nível de acesso "consulta": esconde os pontos de edição mais óbvios.
    Isto é só conforto de interface — quem garante de verdade que consulta
    não edita nada é o RLS do banco, não esta regra de CSS. */
@@ -327,6 +333,10 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
   <div id="drawer" class="drawer">
     <div class="drawer-hd"><span>Menu</span><button class="cal-close" onclick="fecharDrawer()">✕</button></div>
     <div id="drawer-itens"></div>
+  </div>
+  <div id="lightbox" class="lightbox" onclick="if(event.target===this)fecharLightbox()">
+    <button class="lightbox-close" onclick="fecharLightbox()">✕</button>
+    <img id="lightbox-img" src="">
   </div>
 </div>
 
@@ -2192,6 +2202,19 @@ async function agConfExcluir(id,todos){
   showToast(todos?"🗑️ Série excluída":"🗑️ Excluído");
 }
 
+// --- Lightbox (visualizador em tela cheia da imagem do menu, com pinch-zoom nativo) ---
+function abrirLightbox(url){
+  document.getElementById("lightbox-img").src=url;
+  document.getElementById("lightbox").classList.add("aberto");
+  const vp=document.querySelector('meta[name="viewport"]');
+  if(vp){window._viewportOriginal=vp.getAttribute("content");vp.setAttribute("content","width=device-width, initial-scale=1.0");}
+}
+function fecharLightbox(){
+  document.getElementById("lightbox").classList.remove("aberto");
+  const vp=document.querySelector('meta[name="viewport"]');
+  if(vp&&window._viewportOriginal)vp.setAttribute("content",window._viewportOriginal);
+}
+
 // --- Modal de detalhes do Evento (aberto a partir do widget Agenda na Home) ---
 async function abrirModalEvento(id){
   const c=AGENDA.find(x=>x.id===id);
@@ -2237,7 +2260,7 @@ function renderModalEvento(c,imgUrl){
       <div style="margin-bottom:14px;color:var(--text2);font-size:13px">Praça/Locação: ${praca}</div>`}
       <div class="field" style="margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Imagem do menu</label>
-        ${imgUrl?`<img src="${imgUrl}" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--rs);border:1.5px solid var(--border);margin-bottom:8px">`:`<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Nenhuma imagem enviada.</div>`}
+        ${imgUrl?`<img src="${imgUrl}" onclick="abrirLightbox('${imgUrl}')" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--rs);border:1.5px solid var(--border);margin-bottom:8px;cursor:pointer">`:`<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Nenhuma imagem enviada.</div>`}
         ${podeEditar?`
         <input type="file" id="ev-menu-arquivo" accept="image/*" class="minp" style="padding:8px;margin-bottom:6px">
         <div style="display:flex;gap:8px">
