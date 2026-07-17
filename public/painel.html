@@ -36,14 +36,26 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .header-info{flex:1}
 .header-info h1{font-size:17px;font-weight:800;color:white;letter-spacing:-.3px}
 .header-info p{font-size:11px;color:rgba(255,255,255,.6);margin-top:2px;text-transform:uppercase;letter-spacing:.06em}
-.header-menu{display:flex;gap:8px;width:100%}
-.menu-btn{flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
-.menu-btn:hover{background:rgba(255,255,255,.2)}
-.menu-btn:active{background:rgba(255,255,255,.3)}
+.menu-hamb{width:40px;height:40px;flex-shrink:0;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:19px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.menu-hamb:hover{background:rgba(255,255,255,.2)}
+.menu-hamb:active{background:rgba(255,255,255,.3)}
+.menu-evento-rapido{flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.menu-evento-rapido:hover{background:rgba(255,255,255,.2)}
+.menu-evento-rapido:active{background:rgba(255,255,255,.3)}
 @media(max-width:640px){
   .app-header{flex-wrap:wrap}
-  .header-menu{flex-basis:100%}
 }
+
+/* MENU LATERAL (drawer) */
+.drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1001;opacity:0;pointer-events:none;transition:opacity .2s}
+.drawer-backdrop.aberto{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;left:0;bottom:0;width:80%;max-width:300px;background:var(--surface);z-index:1002;box-shadow:var(--shadow-lg);transform:translateX(-100%);transition:transform .25s ease;overflow-y:auto;padding:18px}
+.drawer.aberto{transform:translateX(0)}
+.drawer-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.drawer-hd span{font-size:16px;font-weight:800;color:var(--text)}
+.drawer-item{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px;border-radius:var(--rs);border:none;background:transparent;cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;color:var(--text);text-align:left;margin-bottom:4px;-webkit-tap-highlight-color:transparent;transition:background .15s}
+.drawer-item:active{background:var(--surface2)}
+.drawer-item.ativo{background:var(--text);color:white}
 
 /* Nível de acesso "consulta": esconde os pontos de edição mais óbvios.
    Isto é só conforto de interface — quem garante de verdade que consulta
@@ -287,12 +299,8 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
       <h1>Carregando...</h1>
       <p>Gestão de Salão</p>
     </div>
-    <div class="header-menu">
-      <button class="menu-btn" onclick="openFolgasMes()">📅 Folgas</button>
-      <button class="menu-btn" onclick="openHistorico()">📊 Ausências</button>
-      <button class="menu-btn edit-only" onclick="openHorariosEspeciais()">⏰ Horários</button>
-      <button class="menu-btn" onclick="openConfiguracoes()">⚙️ Config.</button>
-    </div>
+    <button class="menu-hamb" onclick="abrirDrawer()" title="Menu">☰</button>
+    <button class="menu-evento-rapido" onclick="abrirEventos()">🎉 Eventos</button>
   </div>
 
   <div class="controls">
@@ -310,6 +318,11 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     <div id="esc"></div>
   </div>
   <div id="modal"></div>
+  <div id="drawer-backdrop" class="drawer-backdrop" onclick="fecharDrawer()"></div>
+  <div id="drawer" class="drawer">
+    <div class="drawer-hd"><span>Menu</span><button class="cal-close" onclick="fecharDrawer()">✕</button></div>
+    <div id="drawer-itens"></div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1429,28 +1442,39 @@ async function removerHorarioPontualUI(nome,d,mi){
   await persistirRemoverHorarioPontual(nome,ds);
 }
 
-// CONFIGURAÇÕES (equipe/logo/praças/setores) + RELATÓRIOS
-function openConfiguracoes(){
-  window._configPracaAberta=null;window._configSetorAberto=null;window._configFuncSetorAberto=null;
-  renderModalConfiguracoes();
+// MENU LATERAL (drawer) — hub único de navegação, reunindo o que antes
+// estava espalhado entre os botões do cabeçalho e a tela de Configurações.
+let MENU_ATIVO=null;
+const MENU_SECOES=[
+  {titulo:"Escala",itens:[
+    {chave:"folgas",label:"Folgas",emoji:"📅",fn:"openFolgasMes()"},
+    {chave:"ausencias",label:"Faltas/Ausências",emoji:"📊",fn:"openHistorico()"},
+    {chave:"horarios",label:"Horários especiais",emoji:"⏰",fn:"openHorariosEspeciais()",cls:"edit-only"},
+  ]},
+  {titulo:"Configurações",itens:[
+    {chave:"funcionarios",label:"Funcionários",emoji:"👥",fn:"abrirConfigFuncionarios()"},
+    {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
+    {chave:"pracas",label:"Praças e áreas de suporte",emoji:"🗺️",fn:"abrirConfigPracasSetores()"},
+  ]},
+  {titulo:"Relatórios",itens:[
+    {chave:"atestados",label:"Atestados médicos",emoji:"🩺",fn:"openRelatorioAtestados()"},
+    {chave:"folgas-vendidas",label:"Vendas de folga de domingo",emoji:"💰",fn:"openRelatorioFolgasVendidas()"},
+  ]},
+];
+function abrirDrawer(){
+  renderDrawer();
+  document.getElementById("drawer").classList.add("aberto");
+  document.getElementById("drawer-backdrop").classList.add("aberto");
 }
-function renderModalConfiguracoes(){
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-      <h3 style="margin-bottom:0">⚙️ Configurações</h3>
-      <button onclick="cMod()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px;font-weight:700">✕</button>
-    </div>
-    <p class="msub">Ajustes do restaurante e relatórios.</p>
-    <button class="fs-func-btn" onclick="abrirConfigFuncionarios()"><span>👥 Funcionários</span><span style="color:var(--border-s)">›</span></button>
-    <button class="fs-func-btn" onclick="abrirConfigLogo()"><span>🖼️ Logo do restaurante</span><span style="color:var(--border-s)">›</span></button>
-    <button class="fs-func-btn" onclick="abrirConfigPracasSetores()"><span>🗺️ Praças e áreas de suporte</span><span style="color:var(--border-s)">›</span></button>
-    <div class="sec-title" style="margin:16px 0 8px">📋 Relatórios</div>
-    <button class="fs-func-btn" onclick="cMod();openHistorico()"><span>📊 Faltas/ausências</span><span style="color:var(--border-s)">›</span></button>
-    <button class="fs-func-btn" onclick="cMod();openRelatorioAtestados()"><span>🩺 Atestados médicos</span><span style="color:var(--border-s)">›</span></button>
-    <button class="fs-func-btn" onclick="cMod();openRelatorioFolgasVendidas()"><span>💰 Vendas de folga de domingo</span><span style="color:var(--border-s)">›</span></button>
-    <div class="macts"><button onclick="cMod()">Fechar</button></div>
-  </div></div>`;
-  document.getElementById("modal").innerHTML=h;
+function fecharDrawer(){
+  document.getElementById("drawer").classList.remove("aberto");
+  document.getElementById("drawer-backdrop").classList.remove("aberto");
+}
+function renderDrawer(){
+  document.getElementById("drawer-itens").innerHTML=MENU_SECOES.map(sec=>`
+    <div class="sec-title" style="margin:16px 0 8px">${sec.titulo}</div>
+    ${sec.itens.map(it=>`<button class="drawer-item${MENU_ATIVO===it.chave?" ativo":""}${it.cls?" "+it.cls:""}" onclick="MENU_ATIVO='${it.chave}';fecharDrawer();${it.fn}">${it.emoji} ${it.label}</button>`).join("")}
+  `).join("");
 }
 
 // --- Funcionários ---
@@ -1460,7 +1484,7 @@ function abrirConfigFuncionarios(){
 }
 function renderConfigFuncionarios(){
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
-    <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="cMod()">‹</button></div>
     <p class="msub">Adicionar ou remover funcionários do restaurante.</p>`;
   Object.keys(EQ).forEach(k=>{
     const eq=EQ[k],aberto=window._configFuncSetorAberto===k;
@@ -1491,7 +1515,7 @@ function renderConfigFuncionarios(){
     <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}">${p.n}</option>`).join("")}</select>
     <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarFuncionario()">+ Adicionar</button>
   </div>
-  <div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div>
+  <div class="macts"><button onclick="cMod()">‹ Voltar</button></div>
   </div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
@@ -1533,7 +1557,7 @@ function renderConfigLogo(){
   const imgAtualEl=document.querySelector(".logo-wrap img");
   const logoAtualSrc=RESTAURANTE_LOGO_URL||(imgAtualEl?imgAtualEl.src:"");
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
-    <div class="cal-modal-hd"><h3>🖼️ Logo do restaurante</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <div class="cal-modal-hd"><h3>🖼️ Logo do restaurante</h3><button class="cal-close" onclick="cMod()">‹</button></div>
     <p class="msub">Essa imagem aparece no topo do painel.</p>
     <div style="display:flex;justify-content:center;margin-bottom:16px">
       <img src="${logoAtualSrc}" style="width:96px;height:96px;object-fit:cover;border-radius:16px;border:1.5px solid var(--border);box-shadow:var(--shadow)">
@@ -1542,7 +1566,7 @@ function renderConfigLogo(){
       <input type="file" id="logo-arquivo" accept="image/*" class="minp" style="padding:8px">
       <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="enviarLogo()">Enviar novo logo</button>
     </div>
-    <div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div>
+    <div class="macts"><button onclick="cMod()">‹ Voltar</button></div>
   </div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
@@ -1573,7 +1597,7 @@ function abrirConfigPracasSetores(){
 function renderConfigPracasSetores(){
   const aba=window._configPracaSetorTab||"pracas";
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
-    <div class="cal-modal-hd"><h3>🗺️ Praças e áreas de suporte</h3><button class="cal-close" onclick="renderModalConfiguracoes()">‹</button></div>
+    <div class="cal-modal-hd"><h3>🗺️ Praças e áreas de suporte</h3><button class="cal-close" onclick="cMod()">‹</button></div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <button onclick="window._configPracaSetorTab='pracas';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="pracas"?"var(--gold)":"var(--border-s)"};background:${aba==="pracas"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="pracas"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Praças</button>
       <button onclick="window._configPracaSetorTab='setores';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="setores"?"var(--gold)":"var(--border-s)"};background:${aba==="setores"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="setores"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Áreas de suporte</button>
@@ -1642,7 +1666,7 @@ function renderConfigPracasSetores(){
       <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarSetor()">+ Adicionar área</button>
     </div>`;
   }
-  h+=`<div class="macts"><button onclick="renderModalConfiguracoes()">‹ Voltar</button></div></div></div>`;
+  h+=`<div class="macts"><button onclick="cMod()">‹ Voltar</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
 async function adicionarPraca(){
@@ -1865,7 +1889,7 @@ function agGetFiltrados(){
     const fimStr=fim.toISOString().split("T")[0];
     l=l.filter(c=>c.data>=hoje&&c.data<=fimStr&&!c.concluido);
   }
-  else if(["reuniao","tarefa","compromisso","operacao","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
+  else if(["reuniao","tarefa","compromisso","operacao","evento","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
   l=l.sort((a,b)=>{if(a.data!==b.data)return a.data.localeCompare(b.data);if(a.hora&&b.hora)return a.hora.localeCompare(b.hora);return 0;});
 
   // recorrentes: mostrar APENAS a próxima ocorrência (hoje ou futura)
@@ -1895,6 +1919,11 @@ async function openAgenda(){
 async function openAgendaSemana(){
   await carregarAgenda();
   agFiltro="proximos7";agEditId=null;
+  renderAgendaModal();
+}
+async function abrirEventos(){
+  await carregarAgenda();
+  agFiltro="evento";agEditId=null;
   renderAgendaModal();
 }
 
