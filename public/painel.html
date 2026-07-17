@@ -795,7 +795,8 @@ function renderEmpty(){
     listaSlice.forEach(c=>{
       const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
       const isH=c.data===hoje;
-      itensH+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      const isEvento=c.tipo==="evento";
+      itensH+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);${isEvento?"cursor:pointer":""}"${isEvento?` onclick="abrirModalEvento('${c.id}')"`:""}>
         <span style="font-size:18px;flex-shrink:0">${t.emoji}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.titulo}</div>
@@ -1794,6 +1795,7 @@ function agMapeiaLinha(r){
     grupoId:r.grupo_id,concluido:r.concluido,
     visibilidade:r.visibilidade,criadoPor:r.criado_por,
     paxEsperado:r.pax_esperado,pracaId:r.praca_id,
+    menuImagemPath:r.menu_imagem_path,
   };
 }
 async function carregarAgenda(){
@@ -2154,6 +2156,105 @@ async function agConfExcluir(id,todos){
   if(error||!apagados||apagados.length===0){avisoErro("Sem permissão para excluir este compromisso.");return;}
   await carregarAgenda();renderAgendaModal();renderEmpty();
   showToast(todos?"🗑️ Série excluída":"🗑️ Excluído");
+}
+
+// --- Modal de detalhes do Evento (aberto a partir do widget Agenda na Home) ---
+async function abrirModalEvento(id){
+  const c=AGENDA.find(x=>x.id===id);
+  if(!c)return;
+  let imgUrl=null;
+  if(c.menuImagemPath){
+    const{data:signed}=await supabaseClient.storage.from("eventos-menu").createSignedUrl(c.menuImagemPath,3600);
+    imgUrl=signed?signed.signedUrl:null;
+  }
+  renderModalEvento(c,imgUrl);
+}
+function renderModalEvento(c,imgUrl){
+  const podeEditar=agPodeEditar(c);
+  const praca=c.pracaId?(PD.find(p=>p.id===c.pracaId)?.n||"Restaurante todo"):"Restaurante todo";
+  document.getElementById("modal").innerHTML=`
+    <div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+      <h3>🎉 ${podeEditar?"Editar evento":"Detalhes do evento"}</h3>
+      ${podeEditar?`
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Nome do evento</label>
+        <input type="text" id="ev-titulo" value="${c.titulo||""}" style="width:100%;font-size:15px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:500">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Pax esperado</label>
+          <input type="number" id="ev-pax" min="0" placeholder="0" value="${c.paxEsperado||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Horário</label>
+          <input type="time" id="ev-hora" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Praça/Locação</label>
+        <select id="ev-praca" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
+          <option value=""${!c.pracaId?" selected":""}>Restaurante todo</option>
+          ${PD.map(p=>`<option value="${p.id}"${c.pracaId===p.id?" selected":""}>${p.n}</option>`).join("")}
+        </select>
+      </div>`:`
+      <div style="margin-bottom:10px;font-size:15px;font-weight:700;color:var(--text)">${c.titulo}</div>
+      <div style="margin-bottom:5px;color:var(--text2);font-size:13px">Pax esperado: ${c.paxEsperado||0}</div>
+      <div style="margin-bottom:5px;color:var(--text2);font-size:13px">Horário: ${c.hora||"—"}</div>
+      <div style="margin-bottom:14px;color:var(--text2);font-size:13px">Praça/Locação: ${praca}</div>`}
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Imagem do menu</label>
+        ${imgUrl?`<img src="${imgUrl}" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--rs);border:1.5px solid var(--border);margin-bottom:8px">`:`<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Nenhuma imagem enviada.</div>`}
+        ${podeEditar?`
+        <input type="file" id="ev-menu-arquivo" accept="image/*" class="minp" style="padding:8px;margin-bottom:6px">
+        <div style="display:flex;gap:8px">
+          <button class="bok" style="flex:1;padding:9px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="enviarMenuEvento('${c.id}')">${imgUrl?"Trocar imagem":"Enviar imagem"}</button>
+          ${imgUrl?`<button style="padding:9px 14px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--danger);cursor:pointer;font-family:inherit;font-weight:700" onclick="removerMenuEvento('${c.id}')">Remover</button>`:""}
+        </div>`:""}
+      </div>
+      <div class="macts"><button onclick="cMod()">${podeEditar?"Cancelar":"Fechar"}</button>${podeEditar?`<button class="bok" onclick="salvarModalEvento('${c.id}')">Salvar</button>`:""}</div>
+    </div></div>`;
+}
+async function salvarModalEvento(id){
+  const titulo=document.getElementById("ev-titulo").value.trim();
+  if(!titulo){alert("Informe o nome do evento.");return;}
+  const hora=document.getElementById("ev-hora").value;
+  const paxEl=document.getElementById("ev-pax");
+  const paxEsperado=paxEl&&paxEl.value?parseInt(paxEl.value,10):null;
+  const pracaEl=document.getElementById("ev-praca");
+  const pracaId=pracaEl&&pracaEl.value?pracaEl.value:null;
+  const{data,error}=await supabaseClient.from("agenda_compromissos")
+    .update({titulo,hora:hora||null,pax_esperado:paxEsperado,praca_id:pracaId})
+    .eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para editar este evento.");return;}
+  await carregarAgenda();
+  cMod();
+  if(dSel!=null)renderEsc(dSel,gm());
+  renderEmpty();
+  showToast("✅ Evento atualizado!");
+}
+async function enviarMenuEvento(id){
+  const input=document.getElementById("ev-menu-arquivo");
+  const arquivo=input.files&&input.files[0];
+  if(!arquivo){avisoErro("Escolha uma imagem.");return;}
+  const ext=(arquivo.name.split(".").pop()||"jpg").toLowerCase();
+  const caminho=`${id}/menu.${ext}`;
+  const{error:uploadError}=await supabaseClient.storage.from("eventos-menu").upload(caminho,arquivo,{upsert:true});
+  if(uploadError){avisoErro("Não foi possível enviar a imagem.");return;}
+  const{data,error}=await supabaseClient.from("agenda_compromissos").update({menu_imagem_path:caminho}).eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Imagem enviada, mas sem permissão para salvar no compromisso.");return;}
+  await carregarAgenda();
+  showToast("✅ Imagem do menu enviada!");
+  abrirModalEvento(id);
+}
+async function removerMenuEvento(id){
+  const c=AGENDA.find(x=>x.id===id);
+  if(!c||!c.menuImagemPath)return;
+  await supabaseClient.storage.from("eventos-menu").remove([c.menuImagemPath]);
+  const{data,error}=await supabaseClient.from("agenda_compromissos").update({menu_imagem_path:null}).eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para remover a imagem.");return;}
+  await carregarAgenda();
+  showToast("🗑️ Imagem removida.");
+  abrirModalEvento(id);
 }
 
 async function carregarEquipeEPracas(){

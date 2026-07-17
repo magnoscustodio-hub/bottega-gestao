@@ -1104,3 +1104,72 @@ create policy "Master/gerencial remove compartilhado ou proprio; consulta so o p
       and criado_por = auth.uid()
     )
   );
+
+-- ============================================================
+-- Imagem do menu de um compromisso do tipo "evento" — bucket PRIVADO
+-- (diferente do "logos", que e publico): a imagem pode pertencer a um
+-- compromisso "Pessoal", entao a leitura precisa respeitar a mesma regra
+-- de visibilidade da agenda_compromissos. Guarda so o caminho do arquivo;
+-- o app gera uma URL assinada (expira em 1h) na hora de exibir.
+-- ============================================================
+
+alter table public.agenda_compromissos
+  add column menu_imagem_path text;
+
+insert into storage.buckets (id, name, public)
+values ('eventos-menu', 'eventos-menu', false)
+on conflict (id) do nothing;
+
+create policy "Quem ve o compromisso ve a imagem do menu"
+  on storage.objects for select
+  using (
+    bucket_id = 'eventos-menu'
+    and exists (
+      select 1 from public.agenda_compromissos ac
+      where ac.id::text = (storage.foldername(name))[1]
+        and public.tem_nivel(ac.restaurante_id, array['master','gerencial','consulta'])
+        and (ac.visibilidade = 'compartilhado' or ac.criado_por = auth.uid())
+    )
+  );
+
+create policy "Quem pode editar o compromisso envia a imagem do menu"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'eventos-menu'
+    and exists (
+      select 1 from public.agenda_compromissos ac
+      where ac.id::text = (storage.foldername(name))[1]
+        and (
+          (public.tem_nivel(ac.restaurante_id, array['master','gerencial']) and (ac.visibilidade = 'compartilhado' or ac.criado_por = auth.uid()))
+          or (public.tem_nivel(ac.restaurante_id, array['consulta']) and ac.criado_por = auth.uid())
+        )
+    )
+  );
+
+create policy "Quem pode editar o compromisso troca a imagem do menu"
+  on storage.objects for update
+  using (
+    bucket_id = 'eventos-menu'
+    and exists (
+      select 1 from public.agenda_compromissos ac
+      where ac.id::text = (storage.foldername(name))[1]
+        and (
+          (public.tem_nivel(ac.restaurante_id, array['master','gerencial']) and (ac.visibilidade = 'compartilhado' or ac.criado_por = auth.uid()))
+          or (public.tem_nivel(ac.restaurante_id, array['consulta']) and ac.criado_por = auth.uid())
+        )
+    )
+  );
+
+create policy "Quem pode editar o compromisso remove a imagem do menu"
+  on storage.objects for delete
+  using (
+    bucket_id = 'eventos-menu'
+    and exists (
+      select 1 from public.agenda_compromissos ac
+      where ac.id::text = (storage.foldername(name))[1]
+        and (
+          (public.tem_nivel(ac.restaurante_id, array['master','gerencial']) and (ac.visibilidade = 'compartilhado' or ac.criado_por = auth.uid()))
+          or (public.tem_nivel(ac.restaurante_id, array['consulta']) and ac.criado_por = auth.uid())
+        )
+    )
+  );
