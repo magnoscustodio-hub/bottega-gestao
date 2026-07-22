@@ -43,9 +43,9 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .menu-hamb{width:40px;height:40px;flex-shrink:0;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:19px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
 .menu-hamb:hover{background:rgba(255,255,255,.2)}
 .menu-hamb:active{background:rgba(255,255,255,.3)}
-.menu-evento-rapido{flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
-.menu-evento-rapido:hover{background:rgba(255,255,255,.2)}
-.menu-evento-rapido:active{background:rgba(255,255,255,.3)}
+.menu-acao-rapida{flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
+.menu-acao-rapida:hover{background:rgba(255,255,255,.2)}
+.menu-acao-rapida:active{background:rgba(255,255,255,.3)}
 
 /* MENU LATERAL (drawer) */
 .drawer-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1001;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -310,7 +310,8 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     </div>
     <div class="app-header-menu">
       <button class="menu-hamb" onclick="abrirDrawer()" title="Menu">☰</button>
-      <button class="menu-evento-rapido" onclick="abrirEventos()">🎉 Eventos</button>
+      <button class="menu-acao-rapida" onclick="openAgenda()">📅 Agenda</button>
+      <button class="menu-acao-rapida" onclick="abrirEventos()">🎉 Eventos</button>
     </div>
   </div>
 
@@ -797,11 +798,6 @@ function salvarEscalaManual(d,mi){
   showToast("✅ Escala do dia atualizada!");
 }
 
-function voltarAgenda(){
-  dSel=null;
-  renderCal();
-  renderEmpty();
-}
 function renderEmpty(){
   const hoje=agHoje();
   const nHoje=AGENDA.filter(c=>c.data===hoje&&!c.concluido).length;
@@ -888,7 +884,6 @@ function renderEsc(d,mi){
         ${bdg(stL,stC)}
         ${fer?bdg("🎉 Feriado — 100%","wn"):""}
         ${fchJ?bdg("🔒 Fechado","dn"):""}
-        <button onclick="voltarAgenda()" style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:var(--rs);color:white;font-size:11px;font-weight:700;padding:4px 10px;cursor:pointer;font-family:inherit;margin-top:2px">🗓️ Agenda</button>
       </div>
     </div>
   </div>`;
