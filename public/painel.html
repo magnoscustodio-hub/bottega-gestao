@@ -516,11 +516,39 @@ function tFolgas(d,mi){
   return res;
 }
 function getFolgasVendidas(d,mi){return FOLGAS_VENDIDAS[`${mi}_${d}`]||[];}
+// Praça de origem de um garçom: a preferida (praca_preferencial_id, refletida
+// em PD[].gc), com o mesmo fallback que distribuicaoAutomatica já usa quando
+// não há preferência definida (ou ela aponta pra uma praça que não existe mais).
+function pracaDeOrigemDoGarcom(nome){
+  const p=PD.find(p=>(p.gc||[]).includes(nome));
+  if(p)return p.id;
+  const fallback=PD.find(p=>!p.fch&&!p.fimSemana);
+  return fallback?fallback.id:null;
+}
+// Remove a pessoa de qualquer praça/setor onde esteja alocada no dia, sem
+// reabrir o modal de "Editar escala" (diferente de removerDaPraca, que é
+// chamada de dentro desse modal e por isso termina re-renderizando ele).
+function removerDeQualquerPraca(nome,d,mi){
+  const escManual=getEscalaManual(d,mi);
+  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
+  let mudou=false;
+  Object.keys(dist).forEach(k=>{
+    if(dist[k].includes(nome)){dist[k]=dist[k].filter(n=>n!==nome);mudou=true;}
+  });
+  if(mudou)setEscalaManual(d,mi,dist);
+}
 function venderFolga(nome,d,mi){
   const k=`${mi}_${d}`;
   if(!FOLGAS_VENDIDAS[k])FOLGAS_VENDIDAS[k]=[];
   if(!FOLGAS_VENDIDAS[k].includes(nome))FOLGAS_VENDIDAS[k].push(nome);
   persistirFolgaVendida(nome,ds2s(mi,d),true);
+  if(EQ.garcons.m.includes(nome)){
+    const pid=pracaDeOrigemDoGarcom(nome);
+    // moverParaPraca termina reabrindo o modal de "Editar escala" (ela foi
+    // feita pra ser chamada de dentro dele) — como aqui não estamos nesse
+    // modal, fechamos de novo em seguida pra não aparecer sem ter sido pedido.
+    if(pid){moverParaPraca(pid,nome,d,mi);cMod();}
+  }
   renderEsc(d,mi);renderCal();
   showToast("✅ Folga vendida — "+nome+" escalado!");
 }
@@ -528,6 +556,7 @@ function cancelarVendaFolga(nome,d,mi){
   const k=`${mi}_${d}`;
   if(FOLGAS_VENDIDAS[k])FOLGAS_VENDIDAS[k]=FOLGAS_VENDIDAS[k].filter(n=>n!==nome);
   persistirFolgaVendida(nome,ds2s(mi,d),false);
+  if(EQ.garcons.m.includes(nome)) removerDeQualquerPraca(nome,d,mi);
   renderEsc(d,mi);renderCal();
   showToast("↩ Folga restaurada para "+nome);
 }
