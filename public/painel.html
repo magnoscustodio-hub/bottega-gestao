@@ -471,6 +471,12 @@ async function persistirRemoverAusencia(nome,ds){
   const{error}=await supabaseClient.from("ausencias").delete().eq("funcionario_id",funcionarioId).eq("data",ds);
   if(error)avisoErro("Não foi possível remover a ausência.");
 }
+async function persistirRemoverAusenciasRange(nome,diasIso){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId||!diasIso.length)return;
+  const{error}=await supabaseClient.from("ausencias").delete().eq("funcionario_id",funcionarioId).in("data",diasIso);
+  if(error)avisoErro("Não foi possível atualizar a ausência.");
+}
 async function persistirFolgasFuncionario(nome,mi,ano,dias){
   const funcionarioId=FUNC_ID_POR_NOME[nome];
   if(!funcionarioId)return;
@@ -1232,9 +1238,25 @@ function salvarEdicaoAusencia(nome,d,mi){
   const iniDate=new Date(iniStr+"T12:00:00"),fimDate=new Date(fimStr+"T12:00:00");
   if(fimDate<iniDate){alert("Data fim não pode ser anterior ao início.");return;}
   const dsAntiga=ds2s(mi,d);
-  const kAtual=`${mi}_${d}`;
-  if(AUSENCIAS[kAtual])AUSENCIAS[kAtual]=AUSENCIAS[kAtual].filter(n=>n!==nome);
-  HISTORICO=HISTORICO.filter(h=>h.func!==nome);
+  const antigaDate=new Date(dsAntiga+"T12:00:00");
+  // janela afetada = a data original do registro + o novo período escolhido.
+  // Remove tudo nessa janela antes de reinserir — se o período for estendido
+  // por cima de dias que já tinham registro próprio, evita duplicar (e evita
+  // deixar HISTORICO em memória desincronizado do banco).
+  const janelaIni=new Date(Math.min(antigaDate,iniDate));
+  const janelaFim=new Date(Math.max(antigaDate,fimDate));
+  const diasRemovidos=[];
+  {
+    const cur=new Date(janelaIni);
+    while(cur<=janelaFim){
+      const mes=cur.getMonth(),dia=cur.getDate(),ano=cur.getFullYear();
+      const k=`${mes}_${dia}`;
+      if(AUSENCIAS[k])AUSENCIAS[k]=AUSENCIAS[k].filter(n=>n!==nome);
+      diasRemovidos.push(`${ano}-${String(mes+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`);
+      cur.setDate(cur.getDate()+1);
+    }
+  }
+  HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasRemovidos.includes(h.ds)));
   const diasIso=[];
   const cur=new Date(iniDate);
   while(cur<=fimDate){
@@ -1249,7 +1271,7 @@ function salvarEdicaoAusencia(nome,d,mi){
   }
   cMod();renderEsc(d,mi);renderCal();
   showToast("✅ Ausência de "+nome+" atualizada");
-  persistirRemoverAusencia(nome,dsAntiga).then(()=>persistirAusenciaRange(nome,diasIso,motivo));
+  persistirRemoverAusenciasRange(nome,diasRemovidos).then(()=>persistirAusenciaRange(nome,diasIso,motivo));
 }
 
 // HISTÓRICO

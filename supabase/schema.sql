@@ -378,7 +378,8 @@ create table if not exists public.ausencias (
   funcionario_id uuid not null references public.funcionarios (id) on delete cascade,
   data date not null,
   motivo text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (funcionario_id, data)
 );
 
 alter table public.ausencias enable row level security;
