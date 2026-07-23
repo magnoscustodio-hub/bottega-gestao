@@ -563,11 +563,16 @@ function venderFolga(nome,d,mi){
   renderEsc(d,mi);renderCal();
   showToast("✅ Folga vendida — "+nome+" escalado!");
 }
-function cancelarVendaFolga(nome,d,mi){
+// Mutação de dados por trás de "desfazer venda", sem re-render/toast — reaproveitada
+// tanto pelo botão "↩ Desfazer" quanto pela limpeza automática em salvarFolgas().
+function desfazerVendaDeFolgaDados(nome,d,mi){
   const k=`${mi}_${d}`;
   if(FOLGAS_VENDIDAS[k])FOLGAS_VENDIDAS[k]=FOLGAS_VENDIDAS[k].filter(n=>n!==nome);
   persistirFolgaVendida(nome,ds2s(mi,d),false);
   if(EQ.garcons.m.includes(nome)) removerDeQualquerPraca(nome,d,mi);
+}
+function cancelarVendaFolga(nome,d,mi){
+  desfazerVendaDeFolgaDados(nome,d,mi);
   renderEsc(d,mi);renderCal();
   showToast("↩ Folga restaurada para "+nome);
 }
@@ -1368,7 +1373,17 @@ async function salvarFolgas(){
   const mi=gm();
   if(!FOLGAS[mi])FOLGAS[mi]={};
   const nomes=Object.keys(fsDias);
+  const diasAntigos={};
+  nomes.forEach(g=>{diasAntigos[g]=FOLGAS[mi][g]||[];});
   nomes.forEach(g=>{FOLGAS[mi][g]=fsDias[g];});
+  // se um dia com folga vendida deixou de ser folga aqui, desfaz a venda também
+  // (senão o registro fica órfão e continua aparecendo no relatório de vendas)
+  nomes.forEach(g=>{
+    const diasRemovidos=diasAntigos[g].filter(d=>!fsDias[g].includes(d));
+    diasRemovidos.forEach(d=>{
+      if((FOLGAS_VENDIDAS[`${mi}_${d}`]||[]).includes(g)) desfazerVendaDeFolgaDados(g,d,mi);
+    });
+  });
   cMod();if(dSel)renderEsc(dSel,mi);renderCal();
   showToast("✅ Folgas de "+MN[mi]+" atualizadas!");
   await Promise.all(nomes.map(g=>persistirFolgasFuncionario(g,mi,fsAno,fsDias[g])));
