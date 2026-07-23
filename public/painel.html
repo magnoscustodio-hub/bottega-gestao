@@ -238,6 +238,17 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .fs-func-count{font-size:12px;color:var(--text3);font-weight:500}
 .fs-func-count.has{color:var(--green);font-weight:700}
 
+/* CARDS DE RESUMO DOS RELATÓRIOS */
+.stat-row{display:flex;gap:10px;margin-bottom:16px}
+.stat-card{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 10px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:6px;box-shadow:var(--shadow)}
+.stat-icon{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:20px}
+.stat-icon.red{background:var(--red-bg);color:var(--red)}
+.stat-icon.blue{background:var(--blue-bg);color:var(--blue)}
+.stat-icon.green{background:var(--green-bg);color:var(--green)}
+.stat-icon.gold{background:var(--gold-bg);color:var(--gold)}
+.stat-num{font-size:26px;font-weight:900;color:var(--text);line-height:1}
+.stat-label{font-size:11px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+
 /* CALENDÁRIO MODAL */
 .cal-modal-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .cal-modal-hd h3{font-size:17px;font-weight:800}
@@ -1237,8 +1248,9 @@ function salvarEdicaoAusencia(nome,d,mi){
 }
 
 // HISTÓRICO
-function openHistorico(){renderHistorico("todos","todos");}
-function openRelatorioAtestados(){renderHistorico("todos","todos","Atestado médico");}
+let relResumoAberto=false;
+function openHistorico(){relResumoAberto=false;renderHistorico("todos","todos");}
+function openRelatorioAtestados(){relResumoAberto=false;renderHistorico("todos","todos","Atestado médico");}
 function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
   const argMotivo=motivoFixo?`'${motivoFixo}'`:"null";
@@ -1248,9 +1260,13 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
     <h3>${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
-    <p class="msub">${dados.length} registro${dados.length!==1?"s":""} encontrado${dados.length!==1?"s":""}</p>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-icon ${motivoFixo?"blue":"red"}">${motivoFixo?"🩺":"🚫"}</div><div class="stat-num">${dados.length}</div><div class="stat-label">${motivoFixo?"Atestados":"Registros"}</div></div>
+      <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
+    </div>
     <div class="filter-row">
       <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value,${argMotivo})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
       <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value,${argMotivo})"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
@@ -1260,7 +1276,17 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
     h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
     if(filtroFunc==="todos"){
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
-      h+=`<div style="margin-bottom:12px"><div class="sec-title" style="margin-bottom:8px">Resumo</div>${Object.entries(cont).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span></div>`).join("")}</div>`;
+      const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
+      h+=`<div class="fs-setor" style="margin-bottom:12px">
+        <div class="fs-setor-hd" onclick="relResumoAberto=!relResumoAberto;renderHistorico('${filtroFunc}','${filtroMes}',${argMotivo})">
+          <div class="fs-setor-left"><span style="font-size:20px">📊</span>
+            <div><div class="fs-setor-nm">Resumo por funcionário</div>
+            <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
+          </div>
+          <span style="font-size:22px;color:var(--text3);transition:transform .2s;${relResumoAberto?"transform:rotate(90deg)":""}">›</span>
+        </div>
+        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span></div>`).join("")}</div>`:""}
+      </div>`;
     }
     const txt=gerarTextoWA(dados,filtroFunc,filtroMes);
     h+=`<div class="macts"><button onclick="cMod()">Fechar</button><button class="bwp" onclick="copiarWA()">📲 Copiar para WhatsApp</button></div>
@@ -1799,7 +1825,8 @@ async function removerSetor(chave){
 }
 
 // --- Relatório: Vendas de folga de domingo ---
-function openRelatorioFolgasVendidas(){renderRelatorioFolgasVendidas("todos","todos");}
+let fvResumoAberto=false;
+function openRelatorioFolgasVendidas(){fvResumoAberto=false;renderRelatorioFolgasVendidas("todos","todos");}
 function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.func))].sort();
   const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))].sort();
@@ -1807,9 +1834,13 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
     <h3>💰 Vendas de Folga de Domingo</h3>
-    <p class="msub">${dados.length} venda${dados.length!==1?"s":""} registrada${dados.length!==1?"s":""}</p>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
+      <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
+    </div>
     <div class="filter-row">
       <select onchange="renderRelatorioFolgasVendidas(this.value,document.getElementById('fil-mes-fv').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
       <select id="fil-mes-fv" onchange="renderRelatorioFolgasVendidas('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
@@ -1819,7 +1850,17 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
     h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td></tr>`).join("")}</tbody></table>`;
     if(filtroFunc==="todos"){
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
-      h+=`<div style="margin-bottom:12px"><div class="sec-title" style="margin-bottom:8px">Quem mais vendeu</div>${Object.entries(cont).sort((a,b)=>b[1]-a[1]).map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span></div>`).join("")}</div>`;
+      const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
+      h+=`<div class="fs-setor" style="margin-bottom:12px">
+        <div class="fs-setor-hd" onclick="fvResumoAberto=!fvResumoAberto;renderRelatorioFolgasVendidas('${filtroFunc}','${filtroMes}')">
+          <div class="fs-setor-left"><span style="font-size:20px">💰</span>
+            <div><div class="fs-setor-nm">Quem mais vendeu</div>
+            <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
+          </div>
+          <span style="font-size:22px;color:var(--text3);transition:transform .2s;${fvResumoAberto?"transform:rotate(90deg)":""}">›</span>
+        </div>
+        ${fvResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span></div>`).join("")}</div>`:""}
+      </div>`;
     }
   }
   h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div>`;
