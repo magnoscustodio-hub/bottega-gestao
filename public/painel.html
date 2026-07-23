@@ -380,6 +380,7 @@ let cm=6,cy=2026,dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
 let TURNO="a";
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
+let fsAba="folgas";
 
 let EQ={};
 // Horários especiais de entrada — carregado do Supabase (tabela horarios_especiais) em boot().
@@ -1370,12 +1371,20 @@ function renderModalFolgas(){
   document.getElementById("modal").innerHTML=h;
 }
 function toggleFsSetor(k){fsSetorAberto=fsSetorAberto===k?null:k;renderModalFolgas();}
-function openFsFunc(g){fsFunc=g;renderCalFunc();}
+function openFsFunc(g){fsFunc=g;fsAba="folgas";renderCalFunc();}
+function abasFsFunc(){
+  return `<div style="display:flex;gap:6px;margin-bottom:12px">
+    <button style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${fsAba==="folgas"?"var(--text)":"var(--border-s)"};background:${fsAba==="folgas"?"var(--text)":"var(--surface2)"};color:${fsAba==="folgas"?"white":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit" onclick="fsAba='folgas';renderCalFunc()">📅 Folgas</button>
+    <button style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${fsAba==="ferias"?"var(--gold)":"var(--border-s)"};background:${fsAba==="ferias"?"var(--gold)":"var(--surface2)"};color:${fsAba==="ferias"?"white":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit" onclick="fsAba='ferias';renderCalFunc()">🏖️ Férias</button>
+  </div>`;
+}
 function renderCalFunc(){
+  if(fsAba==="ferias"){renderFeriasFunc();return;}
   const tot=new Date(fsAno,fsMes+1,0).getDate(),off=new Date(fsAno,fsMes,1).getDay();
   const dias=fsDias[fsFunc]||[];
   let h=`<div class="mov" onclick="if(event.target===this){fsFunc=null;renderModalFolgas()}"><div class="mbox">
     <div class="cal-modal-hd"><h3>📅 ${fsFunc}</h3><button class="cal-close" onclick="fsFunc=null;renderModalFolgas()">✕</button></div>
+    ${abasFsFunc()}
     <div class="${dias.length>0?"cal-resumo has":"cal-resumo empty"}">${dias.length>0?"✅ "+dias.length+" dia"+(dias.length>1?"s":"")+" marcado"+(dias.length>1?"s":""):"Toque nos dias de folga abaixo"}</div>
     <div class="cal-m-nav"><button onclick="mudarFsMes(-1)">‹</button><span class="cal-m-title">${MN[fsMes]} ${fsAno}</span><button onclick="mudarFsMes(1)">›</button></div>
     <div class="cal-m-grid">`;
@@ -1389,6 +1398,77 @@ function renderCalFunc(){
   }
   h+=`</div><button class="btn-cal-ok" onclick="fsFunc=null;renderModalFolgas()">Confirmar ✓</button></div></div>`;
   document.getElementById("modal").innerHTML=h;
+}
+
+// --- Férias (reaproveita a tabela ausencias, motivo="Férias" — mesma que já
+// alimenta FERIAS/feriasBanner/eFolga; só faltava a interface pra criar) ---
+function periodosDeFerias(nome){
+  const dias=FERIAS_ROWS.filter(h=>h.func===nome).map(h=>h.ds).sort();
+  const periodos=[];
+  let ini=null,fim=null;
+  dias.forEach(ds=>{
+    if(!ini){ini=ds;fim=ds;return;}
+    const prox=new Date(fim+"T12:00:00");prox.setDate(prox.getDate()+1);
+    const proxIso=`${prox.getFullYear()}-${String(prox.getMonth()+1).padStart(2,"0")}-${String(prox.getDate()).padStart(2,"0")}`;
+    if(ds===proxIso){fim=ds;}
+    else{periodos.push({ini,fim});ini=ds;fim=ds;}
+  });
+  if(ini)periodos.push({ini,fim});
+  return periodos;
+}
+function diasIsoEntre(iniStr,fimStr){
+  const dias=[];
+  const cur=new Date(iniStr+"T12:00:00"),fimDate=new Date(fimStr+"T12:00:00");
+  while(cur<=fimDate){
+    const ano=cur.getFullYear(),mes=cur.getMonth(),dia=cur.getDate();
+    dias.push(`${ano}-${String(mes+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`);
+    cur.setDate(cur.getDate()+1);
+  }
+  return dias;
+}
+function renderFeriasFunc(){
+  const periodos=periodosDeFerias(fsFunc);
+  let h=`<div class="mov" onclick="if(event.target===this){fsFunc=null;renderModalFolgas()}"><div class="mbox">
+    <div class="cal-modal-hd"><h3>🏖️ ${fsFunc}</h3><button class="cal-close" onclick="fsFunc=null;renderModalFolgas()">✕</button></div>
+    ${abasFsFunc()}
+    ${periodos.length?`<div class="sec-title" style="margin-bottom:8px">Períodos registrados</div>${periodos.map(p=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;background:var(--gold-bg);border:1.5px solid var(--gold-br);border-radius:var(--rs);padding:8px 12px;margin-bottom:6px">
+        <span style="font-size:13px;font-weight:700;color:var(--gold)">${fmtData(p.ini)} — ${fmtData(p.fim)}</span>
+        <button onclick="removerPeriodoFerias('${fsFunc}','${p.ini}','${p.fim}')" style="background:none;border:1px solid var(--gold-br);border-radius:20px;padding:2px 10px;font-size:11px;color:var(--gold);cursor:pointer;font-weight:600;font-family:inherit">Remover</button>
+      </div>`).join("")}`:`<div style="font-size:12px;color:var(--text3);margin-bottom:12px">Nenhum período de férias registrado.</div>`}
+    <div style="background:var(--surface2);border-radius:var(--rs);padding:12px;margin-top:8px;border:1.5px solid var(--border)">
+      <div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Novo período de férias</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Início</label><input type="date" id="fer-ini" class="msel" style="margin-bottom:0;padding:8px"></div>
+        <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Fim</label><input type="date" id="fer-fim" class="msel" style="margin-bottom:0;padding:8px"></div>
+      </div>
+    </div>
+    <div class="macts"><button onclick="fsFunc=null;renderModalFolgas()">Fechar</button><button class="bok" onclick="salvarFeriasFuncionario('${fsFunc}')">Registrar férias</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+function salvarFeriasFuncionario(nome){
+  const iniStr=document.getElementById("fer-ini").value,fimStr=document.getElementById("fer-fim").value;
+  if(!iniStr||!fimStr){alert("Informe o período.");return;}
+  if(new Date(fimStr+"T12:00:00")<new Date(iniStr+"T12:00:00")){alert("Data fim não pode ser anterior ao início.");return;}
+  const diasIso=diasIsoEntre(iniStr,fimStr);
+  // limpa qualquer ausência/férias antiga da pessoa nesses dias antes de registrar
+  // (a constraint unique(funcionario_id,data) exige isso antes de reinserir)
+  HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
+  FERIAS_ROWS=FERIAS_ROWS.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
+  diasIso.forEach(ds=>FERIAS_ROWS.push({func:nome,ds,motivo:"Férias",setor:getSetorFunc(nome)}));
+  recalcAusenciasDoMes();recalcFeriasDoMes();
+  renderFeriasFunc();
+  showToast("🏖️ Férias registradas para "+nome);
+  persistirRemoverAusenciasRange(nome,diasIso).then(()=>persistirAusenciaRange(nome,diasIso,"Férias"));
+}
+function removerPeriodoFerias(nome,ini,fim){
+  const diasIso=diasIsoEntre(ini,fim);
+  FERIAS_ROWS=FERIAS_ROWS.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
+  recalcFeriasDoMes();
+  renderFeriasFunc();
+  showToast("↩ Férias removidas");
+  persistirRemoverAusenciasRange(nome,diasIso);
 }
 function toggleFsDia(d){if(!fsDias[fsFunc])fsDias[fsFunc]=[];const idx=fsDias[fsFunc].indexOf(d);if(idx>=0)fsDias[fsFunc].splice(idx,1);else fsDias[fsFunc].push(d);renderCalFunc();}
 function mudarFsMes(delta){fsMes+=delta;if(fsMes>11){fsMes=0;fsAno++;}if(fsMes<0){fsMes=11;fsAno--;}if(fsFunc)renderCalFunc();else renderModalFolgas();}
