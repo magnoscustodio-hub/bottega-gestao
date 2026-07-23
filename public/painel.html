@@ -1253,9 +1253,9 @@ function salvarEdicaoAusencia(nome,d,mi){
 }
 
 // HISTÓRICO
-let relResumoAberto=false;
-function openHistorico(){relResumoAberto=false;renderHistorico("todos","todos");}
-function openRelatorioAtestados(){relResumoAberto=false;renderHistorico("todos","todos","Atestado médico");}
+let relResumoAberto=true;
+function openHistorico(){relResumoAberto=true;renderHistorico("todos","todos");}
+function openRelatorioAtestados(){relResumoAberto=true;renderHistorico("todos","todos","Atestado médico");}
 function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
   const argMotivo=motivoFixo?`'${motivoFixo}'`:"null";
@@ -1278,8 +1278,9 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma ausência registrada.</div>`;}
   else{
-    h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
-    if(filtroFunc==="todos"){
+    if(filtroFunc!=="todos"){
+      h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
+    } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
@@ -1290,7 +1291,7 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${relResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span></div>`).join("")}</div>`:""}
+        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderHistorico('${n}','${filtroMes}',${argMotivo})"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
     const txt=gerarTextoWA(dados,filtroFunc,filtroMes);
@@ -1840,8 +1841,8 @@ async function removerSetor(chave){
 }
 
 // --- Relatório: Vendas de folga de domingo ---
-let fvResumoAberto=false;
-function openRelatorioFolgasVendidas(){fvResumoAberto=false;renderRelatorioFolgasVendidas("todos","todos");}
+let fvResumoAberto=true;
+function openRelatorioFolgasVendidas(){fvResumoAberto=true;renderRelatorioFolgasVendidas("todos","todos");}
 function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.func))].sort();
   const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))].sort();
@@ -1862,8 +1863,9 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma venda de folga registrada.</div>`;}
   else{
-    h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td></tr>`).join("")}</tbody></table>`;
-    if(filtroFunc==="todos"){
+    if(filtroFunc!=="todos"){
+      h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td></tr>`).join("")}</tbody></table>`;
+    } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
@@ -1874,7 +1876,7 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${fvResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${fvResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${n}</span><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span></div>`).join("")}</div>`:""}
+        ${fvResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderRelatorioFolgasVendidas('${n}','${filtroMes}')"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
   }
