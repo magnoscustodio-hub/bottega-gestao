@@ -1289,7 +1289,7 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <h3>${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon ${motivoFixo?"blue":"red"}">${motivoFixo?"🩺":"🚫"}</div><div class="stat-num">${dados.length}</div><div class="stat-label">${motivoFixo?"Atestados":"Registros"}</div></div>
@@ -1318,10 +1318,10 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
       </div>`;
     }
     const txt=gerarTextoWA(dados,filtroFunc,filtroMes);
-    h+=`<div class="macts"><button onclick="cMod()">Fechar</button><button class="bwp" onclick="copiarWA()">📲 Copiar para WhatsApp</button></div>
+    h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button><button class="bwp" onclick="copiarWA()">📲 Copiar para WhatsApp</button></div>
     <textarea id="wa-text" style="position:absolute;left:-9999px">${txt}</textarea>`;
   }
-  if(!dados.length)h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div>`;
+  if(!dados.length)h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div>`;
   h+=`</div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
@@ -1350,7 +1350,7 @@ function openFolgasMes(){
   renderModalFolgas();
 }
 function renderModalFolgas(){
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <h3>📅 Folgas de ${MN[fsMes]} ${fsAno}</h3>
     <p class="msub">Selecione o setor e toque no funcionário para marcar as folgas.</p>`;
   Object.keys(EQ).forEach(k=>{
@@ -1367,7 +1367,7 @@ function renderModalFolgas(){
       ${aberto?`<div class="fs-setor-body">${eq.m.map(g=>{const nf=(fsDias[g]||[]).length;return `<button class="fs-func-btn" onclick="openFsFunc('${g}')"><span>${g}</span><div class="fs-func-right"><span class="fs-func-count${nf>0?" has":""}">${nf>0?nf+" folga"+(nf>1?"s":""):"Sem folgas"}</span><span style="color:var(--border-s)">›</span></div></button>`;}).join("")}</div>`:""}
     </div>`;
   });
-  h+=`<div class="macts"><button onclick="cMod()">Cancelar</button><button class="bok" onclick="salvarFolgas()">Salvar ✓</button></div></div></div>`;
+  h+=`<div class="macts"><button onclick="abrirDrawer()">Cancelar</button><button class="bok" onclick="salvarFolgas()">Salvar ✓</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
 function toggleFsSetor(k){fsSetorAberto=fsSetorAberto===k?null:k;renderModalFolgas();}
@@ -1498,7 +1498,7 @@ function openHorariosEspeciais(){
   renderModalHorarios();
 }
 function renderModalHorarios(){
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <h3>⏰ Horários especiais</h3>
     <p class="msub">Entrada diferente do padrão, recorrente por dia da semana (ex: entra às 15h de segunda a sexta). Toque num funcionário para configurar.</p>`;
   Object.keys(EQ).forEach(k=>{
@@ -1519,7 +1519,7 @@ function renderModalHorarios(){
       }).join("")}</div>`:""}
     </div>`;
   });
-  h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div></div></div>`;
+  h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
 function toggleHeSetor(k){heSetorAberto=heSetorAberto===k?null:k;renderModalHorarios();}
@@ -1645,6 +1645,7 @@ const MENU_SECOES=[
   ]},
 ];
 function abrirDrawer(){
+  cMod();
   renderDrawer();
   document.getElementById("drawer").classList.add("aberto");
   document.getElementById("drawer-backdrop").classList.add("aberto");
@@ -1666,8 +1667,8 @@ function abrirConfigFuncionarios(){
   renderConfigFuncionarios();
 }
 function renderConfigFuncionarios(){
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
-    <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="cMod()">‹</button></div>
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
     <p class="msub">Adicionar ou remover funcionários do restaurante.</p>`;
   Object.keys(EQ).forEach(k=>{
     const eq=EQ[k],aberto=window._configFuncSetorAberto===k;
@@ -1698,7 +1699,7 @@ function renderConfigFuncionarios(){
     <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}">${p.n}</option>`).join("")}</select>
     <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarFuncionario()">+ Adicionar</button>
   </div>
-  <div class="macts"><button onclick="cMod()">‹ Voltar</button></div>
+  <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
   </div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
@@ -1739,8 +1740,8 @@ function abrirConfigLogo(){renderConfigLogo();}
 function renderConfigLogo(){
   const imgAtualEl=document.querySelector(".logo-wrap img");
   const logoAtualSrc=RESTAURANTE_LOGO_URL||(imgAtualEl?imgAtualEl.src:"");
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
-    <div class="cal-modal-hd"><h3>🖼️ Logo do restaurante</h3><button class="cal-close" onclick="cMod()">‹</button></div>
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
+    <div class="cal-modal-hd"><h3>🖼️ Logo do restaurante</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
     <p class="msub">Essa imagem aparece no topo do painel.</p>
     <div style="display:flex;justify-content:center;margin-bottom:16px">
       <img src="${logoAtualSrc}" style="width:96px;height:96px;object-fit:cover;border-radius:16px;border:1.5px solid var(--border);box-shadow:var(--shadow)">
@@ -1749,7 +1750,7 @@ function renderConfigLogo(){
       <input type="file" id="logo-arquivo" accept="image/*" class="minp" style="padding:8px">
       <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="enviarLogo()">Enviar novo logo</button>
     </div>
-    <div class="macts"><button onclick="cMod()">‹ Voltar</button></div>
+    <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
   </div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
@@ -1779,8 +1780,8 @@ function abrirConfigPracasSetores(){
 }
 function renderConfigPracasSetores(){
   const aba=window._configPracaSetorTab||"pracas";
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
-    <div class="cal-modal-hd"><h3>🗺️ Praças e áreas de suporte</h3><button class="cal-close" onclick="cMod()">‹</button></div>
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>🗺️ Praças e áreas de suporte</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
     <div style="display:flex;gap:8px;margin-bottom:14px">
       <button onclick="window._configPracaSetorTab='pracas';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="pracas"?"var(--gold)":"var(--border-s)"};background:${aba==="pracas"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="pracas"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Praças</button>
       <button onclick="window._configPracaSetorTab='setores';renderConfigPracasSetores()" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid ${aba==="setores"?"var(--gold)":"var(--border-s)"};background:${aba==="setores"?"var(--gold-bg)":"var(--surface2)"};color:${aba==="setores"?"var(--gold)":"var(--text2)"};font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">Áreas de suporte</button>
@@ -1849,7 +1850,7 @@ function renderConfigPracasSetores(){
       <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarSetor()">+ Adicionar área</button>
     </div>`;
   }
-  h+=`<div class="macts"><button onclick="cMod()">‹ Voltar</button></div></div></div>`;
+  h+=`<div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
 async function adicionarPraca(){
@@ -1953,7 +1954,7 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
-  let h=`<div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <h3>💰 Vendas de Folga de Domingo</h3>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
@@ -1982,7 +1983,7 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
       </div>`;
     }
   }
-  h+=`<div class="macts"><button onclick="cMod()">Fechar</button></div>`;
+  h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div>`;
   h+=`</div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
