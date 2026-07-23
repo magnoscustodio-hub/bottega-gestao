@@ -1212,33 +1212,91 @@ function confirmarRemAusencia(nome,d,mi){
   persistirRemoverAusencia(nome,ds2s(mi,d));
 }
 
+// Descobre o período contínuo (mesmo motivo, dias consecutivos) que contém
+// uma data específica — pra pré-preencher a edição com o período REAL, não
+// só com o dia isolado que a pessoa tocou.
+function periodoDaAusencia(nome,motivo,dsAlvo){
+  const dias=HISTORICO.filter(h=>h.func===nome&&h.motivo===motivo).map(h=>h.ds);
+  let ini=dsAlvo,fim=dsAlvo;
+  while(true){
+    const prev=new Date(ini+"T12:00:00");prev.setDate(prev.getDate()-1);
+    const prevIso=`${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,"0")}-${String(prev.getDate()).padStart(2,"0")}`;
+    if(dias.includes(prevIso))ini=prevIso;else break;
+  }
+  while(true){
+    const next=new Date(fim+"T12:00:00");next.setDate(next.getDate()+1);
+    const nextIso=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,"0")}-${String(next.getDate()).padStart(2,"0")}`;
+    if(dias.includes(nextIso))fim=nextIso;else break;
+  }
+  return{ini,fim};
+}
+// Agrupa uma lista já ordenada por data (mesmo funcionário) em períodos
+// contínuos por motivo — usado nos relatórios pra listar "períodos" em vez
+// de linha por linha.
+function agruparPeriodosPorMotivo(dadosOrdenados){
+  const periodos=[];
+  let atual=null;
+  dadosOrdenados.forEach(r=>{
+    if(atual&&atual.motivo===r.motivo){
+      const prox=new Date(atual.fim+"T12:00:00");prox.setDate(prox.getDate()+1);
+      const proxIso=`${prox.getFullYear()}-${String(prox.getMonth()+1).padStart(2,"0")}-${String(prox.getDate()).padStart(2,"0")}`;
+      if(r.ds===proxIso){atual.fim=r.ds;return;}
+    }
+    if(atual)periodos.push(atual);
+    atual={ini:r.ds,fim:r.ds,motivo:r.motivo};
+  });
+  if(atual)periodos.push(atual);
+  return periodos;
+}
+
+// _ausenciaEditorVoltar guarda como voltar pra tela anterior (dia ou
+// relatório) ao fechar/salvar/remover — o editor é o mesmo nos dois casos.
+let _ausenciaEditorVoltar=null;
 function editarAusencia(nome,d,mi){
   const ds=ds2s(mi,d);
   const reg=HISTORICO.find(h=>h.func===nome&&h.ds===ds);
   const motivoAtual=reg?reg.motivo:"Doença";
+  _ausenciaEditorVoltar=()=>{if(dSel!=null)renderEsc(dSel,gm());};
+  abrirEdicaoAusencia(nome,motivoAtual,ds);
+}
+function editarPeriodoAusenciaDoRelatorio(nome,motivo,dsReferencia,filtroFuncVoltar,filtroMesVoltar,motivoFixoVoltar){
+  _ausenciaEditorVoltar=()=>{renderHistorico(filtroFuncVoltar,filtroMesVoltar,motivoFixoVoltar);};
+  abrirEdicaoAusencia(nome,motivo,dsReferencia);
+}
+function fecharEdicaoAusencia(){
+  const voltar=_ausenciaEditorVoltar;
+  _ausenciaEditorVoltar=null;
+  cMod();
+  if(voltar)voltar();
+}
+function abrirEdicaoAusencia(nome,motivo,dsReferencia){
+  const periodo=periodoDaAusencia(nome,motivo,dsReferencia);
   document.getElementById("modal").innerHTML=`
-    <div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <div class="mov" onclick="if(event.target===this)fecharEdicaoAusencia()"><div class="mbox">
       <h3>✏️ Editar ausência — ${nome}</h3>
-      <p class="msub">Corrija o motivo ou o período da ausência.</p>
-      <select id="ed-motivo" class="msel">${["Doença","Atestado médico","Falta sem justificativa","Emergência familiar","Outro"].map(m=>`<option${m===motivoAtual?" selected":""}>${m}</option>`).join("")}</select>
+      <p class="msub">Corrija o motivo ou o período inteiro da ausência.</p>
+      <select id="ed-motivo" class="msel">${["Doença","Atestado médico","Falta sem justificativa","Emergência familiar","Outro"].map(m=>`<option${m===motivo?" selected":""}>${m}</option>`).join("")}</select>
       <div style="background:var(--surface2);border-radius:var(--rs);padding:12px;margin-bottom:10px;border:1.5px solid var(--border)">
-        <div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Novo período</div>
+        <div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Período</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Início</label><input type="date" id="ed-ini" value="${ds}" class="msel" style="margin-bottom:0;padding:8px"></div>
-          <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Fim</label><input type="date" id="ed-fim" value="${ds}" class="msel" style="margin-bottom:0;padding:8px"></div>
+          <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Início</label><input type="date" id="ed-ini" value="${periodo.ini}" class="msel" style="margin-bottom:0;padding:8px"></div>
+          <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Fim</label><input type="date" id="ed-fim" value="${periodo.fim}" class="msel" style="margin-bottom:0;padding:8px"></div>
         </div>
       </div>
-      <div class="macts"><button onclick="cMod()">Cancelar</button><button class="bok" onclick="salvarEdicaoAusencia('${nome}',${d},${mi})">Salvar</button></div>
+      <div class="macts">
+        <button onclick="fecharEdicaoAusencia()">Cancelar</button>
+        <button class="brd" onclick="confirmarRemoverPeriodoAusencia('${nome}','${periodo.ini}','${periodo.fim}')">🗑️ Remover período</button>
+        <button class="bok" onclick="salvarEdicaoAusencia('${nome}','${dsReferencia}')">Salvar</button>
+      </div>
     </div></div>`;
 }
 
-function salvarEdicaoAusencia(nome,d,mi){
+function salvarEdicaoAusencia(nome,dsAntiga){
   const motivo=document.getElementById("ed-motivo").value;
   const iniStr=document.getElementById("ed-ini").value,fimStr=document.getElementById("ed-fim").value;
   if(!iniStr||!fimStr){alert("Informe o período.");return;}
   const iniDate=new Date(iniStr+"T12:00:00"),fimDate=new Date(fimStr+"T12:00:00");
   if(fimDate<iniDate){alert("Data fim não pode ser anterior ao início.");return;}
-  const dsAntiga=ds2s(mi,d);
   const antigaDate=new Date(dsAntiga+"T12:00:00");
   // janela afetada = a data original do registro + o novo período escolhido.
   // Remove tudo nessa janela antes de reinserir — se o período for estendido
@@ -1258,21 +1316,37 @@ function salvarEdicaoAusencia(nome,d,mi){
     }
   }
   HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasRemovidos.includes(h.ds)));
-  const diasIso=[];
-  const cur=new Date(iniDate);
-  while(cur<=fimDate){
-    const mes=cur.getMonth(),dia=cur.getDate(),ano=cur.getFullYear();
-    const k=`${mes}_${dia}`;
+  const diasIso=diasIsoEntre(iniStr,fimStr);
+  diasIso.forEach(ds=>{
+    const[ano,mes,dia]=ds.split("-").map(Number);
+    const k=`${mes-1}_${dia}`;
     if(!AUSENCIAS[k])AUSENCIAS[k]=[];
     if(!AUSENCIAS[k].includes(nome))AUSENCIAS[k].push(nome);
-    const ds=`${ano}-${String(mes+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`;
     HISTORICO.push({func:nome,ds,motivo,setor:getSetorFunc(nome)});
-    diasIso.push(ds);
-    cur.setDate(cur.getDate()+1);
-  }
-  cMod();renderEsc(d,mi);renderCal();
+  });
+  fecharEdicaoAusencia();
+  renderCal();
   showToast("✅ Ausência de "+nome+" atualizada");
   persistirRemoverAusenciasRange(nome,diasRemovidos).then(()=>persistirAusenciaRange(nome,diasIso,motivo));
+}
+function confirmarRemoverPeriodoAusencia(nome,ini,fim){
+  const dias=diasIsoEntre(ini,fim);
+  const texto=dias.length>1?`Remover os ${dias.length} dias de ausência de ${nome} (${fmtData(ini)} a ${fmtData(fim)})? Essa ação não pode ser desfeita.`:`Remover a ausência de ${nome} em ${fmtData(ini)}? Essa ação não pode ser desfeita.`;
+  if(!window.confirm(texto))return;
+  removerPeriodoAusencia(nome,ini,fim);
+}
+function removerPeriodoAusencia(nome,ini,fim){
+  const diasIso=diasIsoEntre(ini,fim);
+  diasIso.forEach(ds=>{
+    const[ano,mes,dia]=ds.split("-").map(Number);
+    const k=`${mes-1}_${dia}`;
+    if(AUSENCIAS[k])AUSENCIAS[k]=AUSENCIAS[k].filter(n=>n!==nome);
+  });
+  HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
+  fecharEdicaoAusencia();
+  renderCal();
+  showToast("🗑️ Ausência removida");
+  persistirRemoverAusenciasRange(nome,diasIso);
 }
 
 // HISTÓRICO
@@ -1302,7 +1376,13 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma ausência registrada.</div>`;}
   else{
     if(filtroFunc!=="todos"){
-      h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
+      const periodos=agruparPeriodosPorMotivo(dados);
+      h+=`<div class="sec-title" style="margin-bottom:8px">Períodos</div>${periodos.map(p=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:8px 12px;margin-bottom:6px">
+          <span style="font-size:13px;font-weight:700;color:var(--text)">${fmtData(p.ini)}${p.ini!==p.fim?" — "+fmtData(p.fim):""} <span style="font-weight:500;color:var(--text2)">· ${p.motivo}</span></span>
+          <button onclick="editarPeriodoAusenciaDoRelatorio('${filtroFunc}','${p.motivo}','${p.ini}','${filtroFunc}','${filtroMes}',${argMotivo})" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-weight:700;font-family:inherit">✏️ Editar período</button>
+        </div>`).join("")}
+      <table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
     } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
