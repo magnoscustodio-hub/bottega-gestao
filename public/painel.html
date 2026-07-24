@@ -2227,9 +2227,10 @@ function renderAgendaModal(){
         const isRecor=c.recorrencia&&c.recorrencia!=="nunca";
         const isPrimeiro=c._primeiroDoGrupo;
         const totalGrupo=isRecor?AGENDA.filter(x=>x.grupoId===c.grupoId&&x.data>=agHoje()&&!x.concluido).length:0;
+        const isEventoModal=c.tipo==="evento";
         itens+=`<div style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${c.concluido?"var(--border)":t.cor+"40"};border-left:4px solid ${c.concluido?"var(--border-s)":t.cor};padding:10px 12px;margin-bottom:6px;opacity:${c.concluido?.55:1}">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:${c.desc&&!c.concluido?"6px":"0"}">
-            <div style="flex:1;min-width:0">
+            <div style="flex:1;min-width:0;${isEventoModal?"cursor:pointer":""}"${isEventoModal?` onclick="abrirModalEvento('${c.id}')"`:""}>
               <div style="font-size:14px;font-weight:700;color:var(--text);${c.concluido?"text-decoration:line-through;color:var(--text3)":""};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.titulo}</div>
               <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap">
                 ${c.hora?`<span style="font-size:11px;color:var(--text2);font-weight:600">${c.hora}</span>`:""}
