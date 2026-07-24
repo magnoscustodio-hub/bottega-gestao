@@ -1711,15 +1711,15 @@ let MENU_ATIVO=null;
 const MENU_SECOES=[
   {titulo:"Escala",itens:[
     {chave:"folgas",label:"Folgas",emoji:"📅",fn:"openFolgasMes()"},
-    {chave:"ausencias",label:"Faltas/Ausências",emoji:"📊",fn:"openHistorico()"},
+    {chave:"pracas",label:"Praças e áreas de suporte",emoji:"🗺️",fn:"abrirConfigPracasSetores()"},
     {chave:"horarios",label:"Horários especiais",emoji:"⏰",fn:"openHorariosEspeciais()",cls:"edit-only"},
   ]},
   {titulo:"Configurações",itens:[
     {chave:"funcionarios",label:"Funcionários",emoji:"👥",fn:"abrirConfigFuncionarios()"},
     {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
-    {chave:"pracas",label:"Praças e áreas de suporte",emoji:"🗺️",fn:"abrirConfigPracasSetores()"},
   ]},
   {titulo:"Relatórios",itens:[
+    {chave:"ausencias",label:"Faltas/Ausências",emoji:"📊",fn:"openHistorico()"},
     {chave:"atestados",label:"Atestados médicos",emoji:"🩺",fn:"openRelatorioAtestados()"},
     {chave:"folgas-vendidas",label:"Vendas de folga de domingo",emoji:"💰",fn:"openRelatorioFolgasVendidas()"},
   ]},
