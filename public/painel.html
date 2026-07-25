@@ -2210,8 +2210,8 @@ async function abrirEventos(){
 function renderAgendaModal(){
   const now=new Date();
   const hj=`${DS_SEM[now.getDay()]}, ${now.getDate()} de ${MN[now.getMonth()]}`;
-  const nHoje=AGENDA.filter(c=>agIsHoje(c.data)&&!c.concluido).length;
   const lista=agGetFiltrados();
+  const nHoje=lista.filter(c=>agIsHoje(c.data)&&!c.concluido).length;
   const grupos={};
   lista.forEach(c=>{if(!grupos[c.data])grupos[c.data]=[];grupos[c.data].push(c);});
 
