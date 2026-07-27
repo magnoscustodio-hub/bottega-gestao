@@ -856,18 +856,26 @@ function salvarEscalaManual(d,mi){
 
 function renderEmpty(){
   const hoje=agHoje();
-  const nHoje=AGENDA.filter(c=>c.data===hoje&&!c.concluido).length;
+  // Agenda é agenda, Evento é evento: o widget da Home não mostra Eventos
+  // (ficam só na aba "🎉 Eventos"), mas inclui tarefas permanentes (sem data).
+  const naoEvento=c=>c.tipo!=="evento";
+  const nHoje=AGENDA.filter(c=>naoEvento(c)&&!c.concluido&&(agEhPermanente(c)||c.data===hoje)).length;
   // mostrar só próxima ocorrência de cada série recorrente
   const hoje2=agHoje();
   const gruposVistos2={};
-  const listaFull=AGENDA.filter(c=>!c.concluido&&c.data>=hoje2).sort((a,b)=>a.data.localeCompare(b.data)||a.hora.localeCompare(b.hora));
+  const listaFull=AGENDA.filter(c=>naoEvento(c)&&!c.concluido&&(agEhPermanente(c)||c.data>=hoje2)).sort((a,b)=>{
+    if(!a.data&&!b.data)return 0;
+    if(!a.data)return -1;
+    if(!b.data)return 1;
+    return a.data.localeCompare(b.data)||a.hora.localeCompare(b.hora);
+  });
   const lista=[];
   listaFull.forEach(c=>{
     if(!c.grupoId){lista.push(c);return;}
     if(!gruposVistos2[c.grupoId]){gruposVistos2[c.grupoId]=true;lista.push(c);}
   });
   const listaSlice=lista.slice(0,5);
-  
+
   let itensH="";
   if(listaSlice.length===0){
     itensH=`<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:13px">Nenhum compromisso pendente.</div>`;
@@ -875,13 +883,13 @@ function renderEmpty(){
     listaSlice.forEach(c=>{
       const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
       const isH=c.data===hoje;
-      const isEvento=c.tipo==="evento";
-      itensH+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border);${isEvento?"cursor:pointer":""}"${isEvento?` onclick="abrirModalEvento('${c.id}')"`:""}>
+      const isPermanente=agEhPermanente(c);
+      itensH+=`<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
         <span style="font-size:18px;flex-shrink:0">${t.emoji}</span>
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.titulo}</div>
-          <div style="font-size:11px;color:${isH?"var(--blue)":"var(--text3)"};font-weight:${isH?"700":"500"};margin-top:2px">
-            ${isH?"Hoje":agFmtDia(c.data)+", "+agFmtData(c.data)}${c.hora?" · "+c.hora:""}
+          <div style="font-size:11px;color:${isPermanente?"var(--purple)":isH?"var(--blue)":"var(--text3)"};font-weight:${isPermanente||isH?"700":"500"};margin-top:2px">
+            ${isPermanente?"🔁 Sempre":isH?"Hoje":agFmtDia(c.data)+", "+agFmtData(c.data)}${c.hora?" · "+c.hora:""}
           </div>
         </div>
         ${c.prioridade==="alta"?`<span style="font-size:10px;font-weight:800;color:var(--red);flex-shrink:0">⚡</span>`:""}
@@ -2155,6 +2163,7 @@ let AGENDA=[];
 let agFiltro="todos";
 let agEditId=null;
 let agTipo="tarefa";
+let agPermanente=false;
 
 function agPodeEditar(c){
   if(c.criadoPor===USER_ID)return true;
@@ -2226,19 +2235,29 @@ function agFmtData(ds){const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;}
 function agFmtDia(ds){const dt=new Date(ds+"T12:00:00");return DS_SEM[dt.getDay()];}
 function agFmtDiaCompleto(ds){const dt=new Date(ds+"T12:00:00");const[y,m,d]=ds.split("-");return `${DS_SEM[dt.getDay()]}, ${parseInt(d)} de ${MN[parseInt(m)-1]}`;}
 
+function agEhPermanente(c){return c.tipo==="tarefa"&&!c.data;}
 function agGetFiltrados(){
   let l=[...AGENDA];
-  if(agFiltro==="hoje") l=l.filter(c=>agIsHoje(c.data));
-  else if(agFiltro==="semana") l=l.filter(c=>agIsSemana(c.data));
+  // Evento só aparece na própria aba "🎉 Eventos" — nunca nas visões gerais.
+  if(agFiltro!=="evento") l=l.filter(c=>c.tipo!=="evento");
+  if(agFiltro==="hoje") l=l.filter(c=>agEhPermanente(c)||agIsHoje(c.data));
+  else if(agFiltro==="semana") l=l.filter(c=>agEhPermanente(c)||agIsSemana(c.data));
   else if(agFiltro==="pendente") l=l.filter(c=>!c.concluido);
   else if(agFiltro==="proximos7"){
     const hoje=agHoje();
     const fim=new Date();fim.setDate(fim.getDate()+7);
     const fimStr=fim.toISOString().split("T")[0];
-    l=l.filter(c=>c.data>=hoje&&c.data<=fimStr&&!c.concluido);
+    l=l.filter(c=>(agEhPermanente(c)||(c.data>=hoje&&c.data<=fimStr))&&!c.concluido);
   }
   else if(["reuniao","tarefa","compromisso","operacao","evento","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
-  l=l.sort((a,b)=>{if(a.data!==b.data)return a.data.localeCompare(b.data);if(a.hora&&b.hora)return a.hora.localeCompare(b.hora);return 0;});
+  l=l.sort((a,b)=>{
+    if(!a.data&&!b.data)return 0;
+    if(!a.data)return -1;
+    if(!b.data)return 1;
+    if(a.data!==b.data)return a.data.localeCompare(b.data);
+    if(a.hora&&b.hora)return a.hora.localeCompare(b.hora);
+    return 0;
+  });
 
   // recorrentes: mostrar APENAS a próxima ocorrência (hoje ou futura)
   const gruposVistos={};
@@ -2279,17 +2298,18 @@ function renderAgendaModal(){
   const now=new Date();
   const hj=`${DS_SEM[now.getDay()]}, ${now.getDate()} de ${MN[now.getMonth()]}`;
   const lista=agGetFiltrados();
-  const nHoje=lista.filter(c=>agIsHoje(c.data)&&!c.concluido).length;
+  const nHoje=lista.filter(c=>(agEhPermanente(c)||agIsHoje(c.data))&&!c.concluido).length;
   const grupos={};
-  lista.forEach(c=>{if(!grupos[c.data])grupos[c.data]=[];grupos[c.data].push(c);});
+  lista.forEach(c=>{const gk=c.data||"";if(!grupos[gk])grupos[gk]=[];grupos[gk].push(c);});
 
   let itens="";
   if(lista.length===0){
     itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">Nenhum compromisso. Toque em + para adicionar.</div>`;
   } else {
     Object.keys(grupos).sort().forEach(data=>{
-      const isH=agIsHoje(data);
-      itens+=`<div style="font-size:10px;font-weight:800;color:${isH?"var(--blue)":"var(--text3)"};text-transform:uppercase;letter-spacing:.08em;padding:10px 0 5px">${isH?"HOJE":agFmtDiaCompleto(data).toUpperCase()}</div>`;
+      const isPermanenteGrupo=data==="";
+      const isH=!isPermanenteGrupo&&agIsHoje(data);
+      itens+=`<div style="font-size:10px;font-weight:800;color:${isPermanenteGrupo?"var(--purple)":isH?"var(--blue)":"var(--text3)"};text-transform:uppercase;letter-spacing:.08em;padding:10px 0 5px">${isPermanenteGrupo?"🔁 SEMPRE":isH?"HOJE":agFmtDiaCompleto(data).toUpperCase()}</div>`;
       grupos[data].forEach(c=>{
         const t=AG_TIPOS[c.tipo]||AG_TIPOS.outro;
         const isRecor=c.recorrencia&&c.recorrencia!=="nunca";
@@ -2349,14 +2369,27 @@ function renderAgendaModal(){
 function agSetFiltro(f){agFiltro=f;renderAgendaModal();}
 
 function agNovo(){
-  agEditId=null;agTipo="tarefa";
+  agEditId=null;agTipo="tarefa";agPermanente=false;
   renderAgendaForm({data:agHoje(),hora:"",titulo:"",desc:"",tipo:"tarefa",prioridade:"normal",visibilidade:"compartilhado"});
 }
 function agEditar(id){
   agEditId=id;
   const c=AGENDA.find(x=>x.id===id);if(!c)return;
   agTipo=c.tipo;
+  agPermanente=agEhPermanente(c);
   renderAgendaForm(c);
+}
+function agTogglePermanente(){
+  agPermanente=!agPermanente;
+  const dispEl=document.getElementById("ag-data-display");
+  renderAgendaForm({
+    titulo:document.getElementById("ag-titulo").value,
+    data:dispEl?dispEl.value:agHoje(),
+    hora:document.getElementById("ag-hora")?document.getElementById("ag-hora").value:"",
+    prioridade:document.getElementById("ag-prior").value,
+    recorrencia:"nunca",
+    visibilidade:document.getElementById("ag-vis").value,
+  });
 }
 function renderAgendaForm(c){
   document.getElementById("modal").innerHTML=`
@@ -2373,6 +2406,14 @@ function renderAgendaForm(c){
         <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Título</label>
         <input type="text" id="ag-titulo" placeholder="Nome do compromisso..." value="${c.titulo||""}" style="width:100%;font-size:15px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;font-weight:500">
       </div>
+      ${agTipo==="tarefa"?`
+      <div class="field" style="margin-bottom:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--text)">
+          <input type="checkbox" id="ag-permanente" onchange="agTogglePermanente()" ${agPermanente?"checked":""} style="width:16px;height:16px">
+          🔁 Lembrete permanente (sem data — aparece todo dia até concluir)
+        </label>
+      </div>`:""}
+      ${agPermanente?"":`
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Data</label>
@@ -2382,8 +2423,8 @@ function renderAgendaForm(c){
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Horário</label>
           <input type="time" id="ag-hora" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
         </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      </div>`}
+      <div style="display:grid;grid-template-columns:${agPermanente?"1fr":"1fr 1fr"};gap:10px;margin-bottom:14px">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Prioridade</label>
           <select id="ag-prior" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
@@ -2391,6 +2432,7 @@ function renderAgendaForm(c){
             <option value="alta"${c.prioridade==="alta"?" selected":""}>Urgente</option>
           </select>
         </div>
+        ${agPermanente?"":`
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Repetir</label>
           <select id="ag-recor" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
@@ -2399,7 +2441,7 @@ function renderAgendaForm(c){
             <option value="quinzenal"${(c.recorrencia||"")==="quinzenal"?" selected":""}>Quinzenal</option>
             <option value="mensal"${(c.recorrencia||"")==="mensal"?" selected":""}>Todo mês</option>
           </select>
-        </div>
+        </div>`}
       </div>
       ${agTipo==="evento"?`
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
@@ -2427,6 +2469,7 @@ function renderAgendaForm(c){
 }
 function agSelTipo(k,titulo,data,hora,prior,desc,recor,vis,pax,praca){
   agTipo=k;
+  agPermanente=false;
   renderAgendaForm({titulo,data,hora,prioridade:prior,desc,tipo:k,recorrencia:recor||"nunca",visibilidade:vis||"compartilhado",paxEsperado:pax?parseInt(pax,10):null,pracaId:praca||""});
 }
 function agParseData(val){
@@ -2442,10 +2485,12 @@ async function agSalvar(){
   const titulo=document.getElementById("ag-titulo").value.trim();
   // ler data do campo display e converter DD/MM/AAAA → AAAA-MM-DD
   const dispEl=document.getElementById("ag-data-display");
-  let data=dispEl&&dispEl.value?dispEl.value:agHoje();
+  let data=agPermanente?null:(dispEl&&dispEl.value?dispEl.value:agHoje());
   if(!titulo){alert("Informe o título.");return;}
-  const recorrencia=document.getElementById("ag-recor").value;
-  const hora=document.getElementById("ag-hora").value;
+  const recorEl=document.getElementById("ag-recor");
+  const recorrencia=agPermanente?"nunca":recorEl.value;
+  const horaEl=document.getElementById("ag-hora");
+  const hora=agPermanente?"":horaEl.value;
   const tipo=agTipo;
   const prioridade=document.getElementById("ag-prior").value;
   const descEl=document.getElementById("ag-desc");const desc=descEl?descEl.value.trim():"";

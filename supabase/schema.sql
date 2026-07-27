@@ -1052,7 +1052,7 @@ create table public.agenda_compromissos (
   criado_por uuid not null references auth.users (id) on delete cascade,
   titulo text not null,
   descricao text,
-  data date not null,
+  data date,
   hora text,
   tipo text not null check (tipo in ('reuniao','tarefa','compromisso','operacao','outro','evento')),
   prioridade text not null default 'normal' check (prioridade in ('normal','alta')),
@@ -1062,7 +1062,8 @@ create table public.agenda_compromissos (
   visibilidade text not null default 'compartilhado' check (visibilidade in ('compartilhado','pessoal')),
   pax_esperado int,
   praca_id uuid references public.pracas (id) on delete set null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  constraint agenda_compromissos_data_obrigatoria_exceto_tarefa check (tipo = 'tarefa' or data is not null)
 );
 
 alter table public.agenda_compromissos enable row level security;
