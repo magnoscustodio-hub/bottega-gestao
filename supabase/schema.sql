@@ -337,6 +337,7 @@ create table if not exists public.folgas_vendidas (
   id uuid primary key default gen_random_uuid(),
   funcionario_id uuid not null references public.funcionarios (id) on delete cascade,
   data date not null,
+  tipo text not null default 'domingo' check (tipo in ('domingo','semana')),
   created_at timestamptz not null default now(),
   unique (funcionario_id, data)
 );
