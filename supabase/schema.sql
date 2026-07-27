@@ -151,6 +151,7 @@ create table if not exists public.pracas (
   nome text not null,
   mesas int not null default 0,
   lugares int not null default 0,
+  mesas_config jsonb not null default '[]'::jsonb,
   fim_semana boolean not null default false,
   ordem int not null default 0,
   created_at timestamptz not null default now()

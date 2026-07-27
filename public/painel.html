@@ -353,6 +353,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/mesas-config.js"></script>
 <script>
 const supabaseClient = window.supabase.createClient(
   'https://ufsdmlyrbkvgrlemvzde.supabase.co',
@@ -1866,9 +1867,11 @@ async function enviarLogo(){
 }
 
 // --- Praças e áreas de suporte ---
+let novaPracaLinhas=[],novaPracaNome="",novaPracaFds=false;
 function abrirConfigPracasSetores(){
   window._configPracaSetorTab="pracas";
   window._configPracaAberta=null;window._configSetorAberto=null;
+  novaPracaLinhas=[];novaPracaNome="";novaPracaFds=false;
   renderConfigPracasSetores();
 }
 function renderConfigPracasSetores(){
@@ -1882,6 +1885,7 @@ function renderConfigPracasSetores(){
   if(aba==="pracas"){
     PD.forEach(p=>{
       const aberta=window._configPracaAberta===p.id;
+      if(aberta)mcRegistrar(`ep-${p.id}`,p.mesasConfig,()=>renderConfigPracasSetores());
       h+=`<div class="fs-setor">
         <div class="fs-setor-hd" onclick="window._configPracaAberta='${aberta?"":p.id}';renderConfigPracasSetores()">
           <div class="fs-setor-left"><div><div class="fs-setor-nm">${p.n}</div><div class="fs-setor-sub">Cap. ${p.tl} pax · ${p.fimSemana?"só fim de semana":"todo dia"}</div></div></div>
@@ -1889,12 +1893,10 @@ function renderConfigPracasSetores(){
         </div>
         ${aberta?`<div class="fs-setor-body" style="padding:12px">
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
-          <input class="minp" id="ep-nome-${p.id}" value="${p.n}">
+          <input class="minp" id="ep-nome-${p.id}" value="${p.n}" oninput="PD.find(x=>x.id==='${p.id}').n=this.value">
           <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Mesas</label>
-          <input class="minp" type="number" id="ep-mesas-${p.id}" value="${p.tm}">
-          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Lugares</label>
-          <input class="minp" type="number" id="ep-lugares-${p.id}" value="${p.tl}">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="ep-fds-${p.id}" ${p.fimSemana?"checked":""}> Só abre fim de semana</label>
+          ${mcHtml(`ep-${p.id}`,p.mesasConfig)}
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="ep-fds-${p.id}" ${p.fimSemana?"checked":""} onchange="PD.find(x=>x.id==='${p.id}').fimSemana=this.checked"> Só abre fim de semana</label>
           <div class="master-only" style="display:flex;gap:8px">
             <button class="bok" style="flex:1;padding:8px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarPraca('${p.id}')">Salvar</button>
             <button onclick="confirmarRemoverPraca('${p.id}','${p.n}')" style="flex:1;background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:var(--rs);padding:8px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
@@ -1902,12 +1904,13 @@ function renderConfigPracasSetores(){
         </div>`:""}
       </div>`;
     });
+    mcRegistrar("np",novaPracaLinhas,()=>renderConfigPracasSetores());
     h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
       <div class="sec-title" style="margin-bottom:8px">+ Nova praça</div>
-      <input class="minp" id="np-nome" placeholder="Nome da praça">
-      <input class="minp" type="number" id="np-mesas" placeholder="Mesas">
-      <input class="minp" type="number" id="np-lugares" placeholder="Lugares">
-      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="np-fds"> Só abre fim de semana</label>
+      <input class="minp" id="np-nome" placeholder="Nome da praça" value="${novaPracaNome}" oninput="novaPracaNome=this.value">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Mesas</label>
+      ${mcHtml("np",novaPracaLinhas)}
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:10px"><input type="checkbox" id="np-fds" ${novaPracaFds?"checked":""} onchange="novaPracaFds=this.checked"> Só abre fim de semana</label>
       <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarPraca()">+ Adicionar praça</button>
     </div>`;
   } else {
@@ -1948,24 +1951,26 @@ function renderConfigPracasSetores(){
 }
 async function adicionarPraca(){
   const nome=document.getElementById("np-nome").value.trim();
-  const mesas=parseInt(document.getElementById("np-mesas").value)||0;
-  const lugares=parseInt(document.getElementById("np-lugares").value)||0;
   const fimSemana=document.getElementById("np-fds").checked;
+  const linhas=novaPracaLinhas.filter(l=>(parseInt(l.qtd)||0)>0);
+  const{mesas,lugares}=mcTotais(linhas);
   if(!nome){avisoErro("Informe o nome da praça.");return;}
-  const{error}=await supabaseClient.from("pracas").insert({restaurante_id:RESTAURANTE_ID,nome,mesas,lugares,fim_semana:fimSemana,ordem:PD.length});
+  const{error}=await supabaseClient.from("pracas").insert({restaurante_id:RESTAURANTE_ID,nome,mesas,lugares,mesas_config:linhas,fim_semana:fimSemana,ordem:PD.length});
   if(error){avisoErro("Não foi possível adicionar a praça.");return;}
   showToast("✅ Praça adicionada!");
+  novaPracaLinhas=[];novaPracaNome="";novaPracaFds=false;
   await carregarEquipeEPracas();
   if(dSel)renderEsc(dSel,gm());
   renderConfigPracasSetores();
 }
 async function salvarPraca(id){
   const nome=document.getElementById(`ep-nome-${id}`).value.trim();
-  const mesas=parseInt(document.getElementById(`ep-mesas-${id}`).value)||0;
-  const lugares=parseInt(document.getElementById(`ep-lugares-${id}`).value)||0;
   const fimSemana=document.getElementById(`ep-fds-${id}`).checked;
+  const p=PD.find(x=>x.id===id);
+  const linhas=(p.mesasConfig||[]).filter(l=>(parseInt(l.qtd)||0)>0);
+  const{mesas,lugares}=mcTotais(linhas);
   if(!nome){avisoErro("Informe o nome da praça.");return;}
-  const{error}=await supabaseClient.from("pracas").update({nome,mesas,lugares,fim_semana:fimSemana}).eq("id",id);
+  const{error}=await supabaseClient.from("pracas").update({nome,mesas,lugares,mesas_config:linhas,fim_semana:fimSemana}).eq("id",id);
   if(error){avisoErro("Não foi possível salvar a praça.");return;}
   showToast("✅ Praça atualizada!");
   await carregarEquipeEPracas();
@@ -2731,6 +2736,7 @@ async function carregarEquipeEPracas(){
     id:p.id,n:p.nome,pref:false,fch:false,
     gc:pracaPreferidaPorFuncionario[p.id]||[],
     mesas:"",tm:p.mesas,tl:p.lugares,fimSemana:!!p.fim_semana,
+    mesasConfig:(p.mesas_config&&p.mesas_config.length>0)?p.mesas_config:mcEstimarLinhas(p.mesas,p.lugares),
   }));
   recalcTotais();
 }

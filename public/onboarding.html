@@ -281,6 +281,7 @@ input::placeholder{color:var(--text3)}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/mesas-config.js"></script>
 <script>
 const supabaseClient = window.supabase.createClient(
   'https://ufsdmlyrbkvgrlemvzde.supabase.co',
@@ -512,7 +513,7 @@ function setTurnoFechado(k,turno){
 
 // PRAÇAS
 function addPraca(){
-  D.pracas.push({id:'P'+(D.pracas.length+1),nome:'Praça '+(D.pracas.length+1),mesas:0,lugares:0,fimSemana:false});
+  D.pracas.push({id:'P'+(D.pracas.length+1),nome:'Praça '+(D.pracas.length+1),mesas:0,lugares:0,mesasConfig:[],fimSemana:false});
   renderPracas();
 }
 
@@ -531,26 +532,21 @@ function renderPracas(){
   // inicializar com 2 praças padrão se vazio
   if(D.pracas.length===0){
     D.pracas=[
-      {id:'P1',nome:'Praça 01',mesas:0,lugares:0,fimSemana:false},
-      {id:'P2',nome:'Praça 02',mesas:0,lugares:0,fimSemana:false},
+      {id:'P1',nome:'Praça 01',mesas:0,lugares:0,mesasConfig:[],fimSemana:false},
+      {id:'P2',nome:'Praça 02',mesas:0,lugares:0,mesasConfig:[],fimSemana:false},
     ];
   }
   let h='';
   D.pracas.forEach((p,i)=>{
+    if(!p.mesasConfig)p.mesasConfig=[];
+    mcRegistrar(`praca-${i}`,p.mesasConfig,()=>renderPracas());
     h+=`<div class="praca-card">
       <div class="praca-hd">
         <input class="praca-nm-input" type="text" placeholder="Nome da praça" value="${p.nome}" oninput="D.pracas[${i}].nome=this.value">
         <button class="praca-remove" onclick="removePraca(${i})">×</button>
       </div>
-      <div class="praca-fields">
-        <div class="praca-field">
-          <label>Nº de mesas</label>
-          <input type="number" inputmode="numeric" placeholder="0" value="${p.mesas||''}" oninput="D.pracas[${i}].mesas=parseInt(this.value)||0">
-        </div>
-        <div class="praca-field">
-          <label>Lugares</label>
-          <input type="number" inputmode="numeric" placeholder="0" value="${p.lugares||''}" oninput="D.pracas[${i}].lugares=parseInt(this.value)||0">
-        </div>
+      <div style="margin-bottom:12px">
+        ${mcHtml(`praca-${i}`,p.mesasConfig)}
       </div>
       <div class="toggle-row">
         <label>Abre só fins de semana e feriados</label>
@@ -663,8 +659,8 @@ function togFolga(ds){
 function renderResumo(){
   const totalFunc=Object.values(D.equipe).reduce((s,v)=>s+v,0);
   const totalFolgas=Object.values(D.folgas).reduce((s,v)=>s+v.length,0);
-  const totalLugares=D.pracas.reduce((s,p)=>s+p.lugares,0);
-  const totalMesas=D.pracas.reduce((s,p)=>s+p.mesas,0);
+  const totalLugares=D.pracas.reduce((s,p)=>s+mcTotais(p.mesasConfig).lugares,0);
+  const totalMesas=D.pracas.reduce((s,p)=>s+mcTotais(p.mesasConfig).mesas,0);
   document.getElementById('resumo').innerHTML=`
     <h4>Resumo do cadastro</h4>
     <div class="srow"><span>Restaurante</span><span>${D.nome||'—'}</span></div>
@@ -745,9 +741,11 @@ async function finalizarCadastro(){
     }
 
     // Praças
-    const pracasParaCriar=D.pracas.map((p,i)=>({
-      restaurante_id:restauranteId,nome:p.nome,mesas:p.mesas,lugares:p.lugares,fim_semana:!!p.fimSemana,ordem:i,
-    }));
+    const pracasParaCriar=D.pracas.map((p,i)=>{
+      const linhas=(p.mesasConfig||[]).filter(l=>(parseInt(l.qtd)||0)>0);
+      const{mesas,lugares}=mcTotais(linhas);
+      return{restaurante_id:restauranteId,nome:p.nome,mesas,lugares,mesas_config:linhas,fim_semana:!!p.fimSemana,ordem:i};
+    });
     if(pracasParaCriar.length>0){
       const {error:pracasError}=await supabaseClient.from('pracas').insert(pracasParaCriar);
       if(pracasError) throw pracasError;
