@@ -2815,7 +2815,7 @@ function eventoBanner(ds){
   return eventos.map(ev=>{
     const praca=ev.pracaId?(PD.find(p=>p.id===ev.pracaId)?.n||"Restaurante todo"):"Restaurante todo";
     const pax=ev.paxEsperado||0;
-    return `<div class="albox alev">🎉 <span>Evento: ${ev.titulo} — ${pax} pax — ${praca}</span></div>`;
+    return `<div class="albox alev" style="cursor:pointer" onclick="abrirModalEvento('${ev.id}')">🎉 <span>Evento: ${ev.titulo} — ${pax} pax — ${praca}</span></div>`;
   }).join("");
 }
 function feriasBanner(mi,extraStyle){
