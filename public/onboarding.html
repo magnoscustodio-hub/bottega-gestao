@@ -311,13 +311,13 @@ const supabaseClient = window.supabase.createClient(
 );
 
 const DIAS=[
-  {n:'Segunda-feira',e:'📅',a:'Seg',j:true},
-  {n:'Terça-feira',e:'📅',a:'Ter',j:true},
-  {n:'Quarta-feira',e:'📅',a:'Qua',j:true},
-  {n:'Quinta-feira',e:'📅',a:'Qui',j:true},
-  {n:'Sexta-feira',e:'🍻',a:'Sex',j:true},
-  {n:'Sábado',e:'⭐',a:'Sáb',j:true},
-  {n:'Domingo',e:'🌅',a:'Dom',j:false},
+  {n:'Segunda-feira',e:'📅',a:'Seg'},
+  {n:'Terça-feira',e:'📅',a:'Ter'},
+  {n:'Quarta-feira',e:'📅',a:'Qua'},
+  {n:'Quinta-feira',e:'📅',a:'Qui'},
+  {n:'Sexta-feira',e:'🍻',a:'Sex'},
+  {n:'Sábado',e:'⭐',a:'Sáb'},
+  {n:'Domingo',e:'🌅',a:'Dom'},
 ];
 const SETORES=[
   {k:'garcons',n:'Garçons',e:'🍽️',c:'#378ADD'},
@@ -391,7 +391,7 @@ function saveRestaurante(){
 function savDay(idx,next){
   const a=parseInt(document.getElementById('alm-'+idx)?.value)||0;
   const j=parseInt(document.getElementById('jan-'+idx)?.value)||0;
-  D.pax[DIAS[idx].a]={a,j:DIAS[idx].j?j:0};
+  D.pax[DIAS[idx].a]={a,j};
   goTo(next!==undefined?next:idx+3);
 }
 
@@ -401,11 +401,7 @@ function renderDay(idx){
   const sj=D.pax[d.a]?.j||'';
   let h=`<div class="day-head"><div class="day-emo">${d.e}</div><div><h3>${d.n}</h3><p>Média de clientes</p></div></div>`;
   h+=`<div class="turno-block"><div class="turno-lbl">☀️ Almoço</div><input class="big-input" type="number" id="alm-${idx}" inputmode="numeric" placeholder="0" value="${sa}"></div>`;
-  if(d.j){
-    h+=`<div class="turno-block"><div class="turno-lbl">🌙 Jantar</div><input class="big-input" type="number" id="jan-${idx}" inputmode="numeric" placeholder="0" value="${sj}"></div>`;
-  } else {
-    h+=`<div style="background:var(--surface2);border-radius:12px;padding:16px;text-align:center;font-size:13px;color:#6B6860">🔒 Fechado no jantar</div>`;
-  }
+  h+=`<div class="turno-block"><div class="turno-lbl">🌙 Jantar</div><input class="big-input" type="number" id="jan-${idx}" inputmode="numeric" placeholder="0" value="${sj}"></div>`;
   document.getElementById('dc'+idx).innerHTML=h;
 }
 
