@@ -120,10 +120,13 @@ input::placeholder{color:var(--text3)}
 .btn-secondary{background:var(--surface2);color:var(--text);border:1.5px solid var(--border);margin-top:10px;box-shadow:none}
 .btn-success{background:var(--success);color:white}
 
-.steps{display:flex;flex-direction:column;gap:8px;margin-bottom:24px}
-.step{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--rs);padding:12px 14px;box-shadow:var(--shadow)}
-.step-ico{font-size:20px;flex-shrink:0}
-.step-txt strong{color:var(--text);display:block;font-size:14px;margin-bottom:1px}
+.s0-brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+.s0-brand-lbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2)}
+
+.steps{display:flex;flex-direction:column;gap:10px;margin-bottom:28px}
+.step{display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow)}
+.step-ico{font-size:19px;flex-shrink:0;width:38px;height:38px;border-radius:50%;background:var(--gold-bg);display:flex;align-items:center;justify-content:center}
+.step-txt strong{color:var(--text);display:block;font-size:14px;margin-bottom:2px;font-weight:700}
 .step-txt span{font-size:13px;color:var(--text2)}
 
 .success-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:12px;box-shadow:var(--shadow)}
@@ -142,9 +145,28 @@ input::placeholder{color:var(--text3)}
 
   <!-- S0: BOAS VINDAS -->
   <div class="screen active" id="s0">
-    <div style="font-size:44px;margin-bottom:16px">🍽️</div>
+    <div class="s0-brand">
+      <svg width="48" height="48" viewBox="0 0 130 130" xmlns="http://www.w3.org/2000/svg">
+        <rect width="130" height="130" rx="30" fill="#FBF7F0" />
+        <rect x="3" y="3" width="124" height="124" rx="28" fill="none" stroke="#E8D4A0" stroke-width="1.5" />
+        <g opacity=".08" fill="#1A1410">
+          <circle cx="75" cy="55" r="36" />
+          <circle cx="75" cy="55" r="26" fill="#FBF7F0" />
+          <rect x="28" y="10" width="5" height="70" rx="2.5" />
+          <rect x="24" y="10" width="4" height="22" rx="2" />
+          <rect x="33" y="10" width="4" height="22" rx="2" />
+          <ellipse cx="30" cy="32" rx="6" ry="3" />
+          <rect x="112" y="10" width="5" height="70" rx="2.5" />
+          <path d="M112 10 Q122 22 117 42 L112 42 Z" />
+        </g>
+        <text x="16" y="58" font-family="-apple-system,sans-serif" font-size="9" font-weight="700" fill="#B5893A" letter-spacing="3">23 ANOS</text>
+        <text x="12" y="106" font-family="Georgia,serif" font-size="56" font-weight="700" fill="#1A1410" letter-spacing="-2">EM</text>
+        <line x1="12" y1="114" x2="118" y2="114" stroke="#B5893A" stroke-width="1.2" opacity=".4" />
+      </svg>
+      <span class="s0-brand-lbl">Gestão Operacional</span>
+    </div>
     <h2>Bem-vindo ao GestãoSalão!</h2>
-    <p class="desc">Configure seu restaurante em poucos minutos e tenha a escala pronta hoje.</p>
+    <p class="desc">Essa é a sua ferramenta de trabalho. Configure seu ambiente em poucos minutos e tenha a escala pronta hoje.</p>
     <div class="steps">
       <div class="step"><div class="step-ico">📊</div><div class="step-txt"><strong>Movimento diário</strong><span>Média de clientes por turno</span></div></div>
       <div class="step"><div class="step-ico">👥</div><div class="step-txt"><strong>Sua equipe</strong><span>Funcionários por setor</span></div></div>
