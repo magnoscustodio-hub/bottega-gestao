@@ -168,9 +168,9 @@ input::placeholder{color:var(--text3)}
     <h2>Bem-vindo ao GestãoSalão!</h2>
     <p class="desc">Essa é a sua ferramenta de trabalho. Configure seu ambiente em poucos minutos e tenha a escala pronta hoje.</p>
     <div class="steps">
+      <div class="step"><div class="step-ico">🔒</div><div class="step-txt"><strong>Dias de funcionamento</strong><span>Quais dias o restaurante abre</span></div></div>
       <div class="step"><div class="step-ico">📊</div><div class="step-txt"><strong>Movimento diário</strong><span>Média de clientes por turno</span></div></div>
       <div class="step"><div class="step-ico">👥</div><div class="step-txt"><strong>Sua equipe</strong><span>Funcionários por setor</span></div></div>
-      <div class="step"><div class="step-ico">🔒</div><div class="step-txt"><strong>Dias de funcionamento</strong><span>Quais dias o restaurante abre</span></div></div>
       <div class="step"><div class="step-ico">🗺️</div><div class="step-txt"><strong>Espaço físico</strong><span>Praças, mesas e capacidade</span></div></div>
       <div class="step"><div class="step-ico">📅</div><div class="step-txt"><strong>Folgas do mês</strong><span>Calendário por funcionário</span></div></div>
     </div>
@@ -205,43 +205,43 @@ input::placeholder{color:var(--text3)}
     </div>
   </div>
 
-  <!-- S2-S8: DIAS -->
-  <div class="screen" id="s2"><div id="dc0"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(0)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(1)">← Voltar</button></div></div>
-  <div class="screen" id="s3"><div id="dc1"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(1)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(2)">← Voltar</button></div></div>
-  <div class="screen" id="s4"><div id="dc2"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(2)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(3)">← Voltar</button></div></div>
-  <div class="screen" id="s5"><div id="dc3"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(3)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(4)">← Voltar</button></div></div>
-  <div class="screen" id="s6"><div id="dc4"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(4)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(5)">← Voltar</button></div></div>
-  <div class="screen" id="s7"><div id="dc5"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(5)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(6)">← Voltar</button></div></div>
-  <div class="screen" id="s8"><div id="dc6"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(6,9)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(7)">← Voltar</button></div></div>
+  <!-- S2: DIAS DE FUNCIONAMENTO -->
+  <div class="screen" id="s2">
+    <h2>Dias de funcionamento 🔒</h2>
+    <p class="desc">Marque os dias em que o restaurante <strong>não</strong> funciona.</p>
+    <div id="dias-fechado"></div>
+    <div class="btn-wrap">
+      <button class="btn btn-primary" onclick="goTo(3)">Próximo →</button>
+      <button class="btn btn-secondary" onclick="goTo(1)">← Voltar</button>
+    </div>
+  </div>
 
-  <!-- S9: EQUIPE -->
-  <div class="screen" id="s9">
+  <!-- S3-S9: DIAS (MOVIMENTO DIÁRIO) -->
+  <div class="screen" id="s3"><div id="dc0"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(0)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(2)">← Voltar</button></div></div>
+  <div class="screen" id="s4"><div id="dc1"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(1)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(3)">← Voltar</button></div></div>
+  <div class="screen" id="s5"><div id="dc2"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(2)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(4)">← Voltar</button></div></div>
+  <div class="screen" id="s6"><div id="dc3"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(3)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(5)">← Voltar</button></div></div>
+  <div class="screen" id="s7"><div id="dc4"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(4)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(6)">← Voltar</button></div></div>
+  <div class="screen" id="s8"><div id="dc5"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(5)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(7)">← Voltar</button></div></div>
+  <div class="screen" id="s9"><div id="dc6"></div><div class="btn-wrap"><button class="btn btn-primary" onclick="savDay(6,10)">Próximo →</button><button class="btn btn-secondary" onclick="goTo(8)">← Voltar</button></div></div>
+
+  <!-- S10: EQUIPE -->
+  <div class="screen" id="s10">
     <h2>Sua equipe 👥</h2>
     <p class="desc">Quantos funcionários por setor? Adicione setores personalizados se precisar.</p>
     <div id="eq-cards"></div>
     <button class="add-praca-btn" onclick="addSetorExtra()" style="margin-top:4px">+ Adicionar setor ou função</button>
-    <div class="btn-wrap">
-      <button class="btn btn-primary" onclick="goTo(10)">Próximo →</button>
-      <button class="btn btn-secondary" onclick="goTo(8)">← Voltar</button>
-    </div>
-  </div>
-
-  <!-- S10: NOMES -->
-  <div class="screen" id="s10">
-    <h2>Nomes da equipe 📋</h2>
-    <p class="desc">Digite os nomes separados por vírgula.</p>
-    <div id="nm-cards"></div>
     <div class="btn-wrap">
       <button class="btn btn-primary" onclick="goTo(11)">Próximo →</button>
       <button class="btn btn-secondary" onclick="goTo(9)">← Voltar</button>
     </div>
   </div>
 
-  <!-- S11: DIAS DE FUNCIONAMENTO -->
+  <!-- S11: NOMES -->
   <div class="screen" id="s11">
-    <h2>Dias de funcionamento 🔒</h2>
-    <p class="desc">Marque os dias em que o restaurante <strong>não</strong> funciona.</p>
-    <div id="dias-fechado"></div>
+    <h2>Nomes da equipe 📋</h2>
+    <p class="desc">Digite os nomes separados por vírgula.</p>
+    <div id="nm-cards"></div>
     <div class="btn-wrap">
       <button class="btn btn-primary" onclick="goTo(12)">Próximo →</button>
       <button class="btn btn-secondary" onclick="goTo(10)">← Voltar</button>
@@ -350,8 +350,8 @@ SETORES.forEach(s=>{D.equipe[s.k]=0;D.nomes[s.k]='';});
 let calFunc=null,calMes=new Date().getMonth(),calAno=new Date().getFullYear();
 let setoresAbertos={};
 
-const PROG_STEPS={0:null,1:1,2:1,3:1,4:1,5:1,6:1,7:1,8:1,9:2,10:2,11:3,12:4,13:5,14:6};
-const PROG_LABELS={1:'Movimento',2:'Equipe',3:'Funcionamento',4:'Espaço físico',5:'Folgas',6:'Concluído'};
+const PROG_STEPS={0:null,1:1,2:1,3:2,4:2,5:2,6:2,7:2,8:2,9:2,10:3,11:3,12:4,13:5,14:6};
+const PROG_LABELS={1:'Funcionamento',2:'Movimento',3:'Equipe',4:'Espaço físico',5:'Folgas',6:'Concluído'};
 
 function goTo(n){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
@@ -366,10 +366,10 @@ function goTo(n){
     document.getElementById('pf').style.width=(p/6*100)+'%';
   }
   window.scrollTo(0,0);
-  if(n>=2&&n<=8) renderDay(n-2);
-  if(n===9) renderEquipe();
-  if(n===10) renderNomes();
-  if(n===11) renderDiasFechado();
+  if(n===2) renderDiasFechado();
+  if(n>=3&&n<=9) renderDay(n-3);
+  if(n===10) renderEquipe();
+  if(n===11) renderNomes();
   if(n===12) renderPracas();
   if(n===13) renderFolgaSetores();
   if(n===14) renderResumo();
@@ -392,7 +392,7 @@ function savDay(idx,next){
   const a=parseInt(document.getElementById('alm-'+idx)?.value)||0;
   const j=parseInt(document.getElementById('jan-'+idx)?.value)||0;
   D.pax[DIAS[idx].a]={a,j};
-  goTo(next!==undefined?next:idx+3);
+  goTo(next!==undefined?next:idx+4);
 }
 
 function renderDay(idx){
