@@ -1198,6 +1198,7 @@ function confirmarAusencia(d,mi){
     const k=`${mes}_${dia}`;
     if(!AUSENCIAS[k])AUSENCIAS[k]=[];
     if(!AUSENCIAS[k].includes(func))AUSENCIAS[k].push(func);
+    removerDeQualquerPraca(func,dia,mes);
     const ds=`${ano}-${String(mes+1).padStart(2,"0")}-${String(dia).padStart(2,"0")}`;
     if(!HISTORICO.find(h=>h.func===func&&h.ds===ds))HISTORICO.push({func,ds,motivo,setor:getSetorFunc(func)});
     diasIso.push(ds);
@@ -1335,6 +1336,7 @@ function salvarEdicaoAusencia(nome,dsAntiga){
     const k=`${mes-1}_${dia}`;
     if(!AUSENCIAS[k])AUSENCIAS[k]=[];
     if(!AUSENCIAS[k].includes(nome))AUSENCIAS[k].push(nome);
+    removerDeQualquerPraca(nome,dia,mes-1);
     HISTORICO.push({func:nome,ds,motivo,setor:getSetorFunc(nome)});
   });
   fecharEdicaoAusencia();
@@ -1550,7 +1552,14 @@ function salvarFeriasFuncionario(nome){
   HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
   FERIAS_ROWS=FERIAS_ROWS.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
   diasIso.forEach(ds=>FERIAS_ROWS.push({func:nome,ds,motivo:"Férias",setor:getSetorFunc(nome)}));
+  // recalcula FERIAS/AUSENCIAS antes de mexer na escala, senão eFolga ainda não
+  // sabe que a pessoa está de férias e removerDeQualquerPraca poderia congelar
+  // uma escala manual nova sem necessidade num dia que hoje é 100% automático.
   recalcAusenciasDoMes();recalcFeriasDoMes();
+  diasIso.forEach(ds=>{
+    const[,mes,dia]=ds.split("-").map(Number);
+    removerDeQualquerPraca(nome,dia,mes-1);
+  });
   renderFeriasFunc();
   showToast("🏖️ Férias registradas para "+nome);
   persistirRemoverAusenciasRange(nome,diasIso).then(()=>persistirAusenciaRange(nome,diasIso,"Férias"));
