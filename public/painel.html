@@ -329,9 +329,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
   <div class="controls">
     <div class="ctrl"><label>Mês</label>
       <select id="xm" onchange="changeMes()">
-        <option value="6">Julho 2026</option><option value="7">Agosto 2026</option>
-        <option value="8">Setembro 2026</option><option value="9">Outubro 2026</option>
-        <option value="10">Novembro 2026</option><option value="11">Dezembro 2026</option>
+        <option>Carregando...</option>
       </select>
     </div>
   </div>
@@ -378,7 +376,8 @@ let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={}
 let HISTORICO_FOLGAS_VENDIDAS=[];
 let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
-let cm=6,cy=2026,dSel=null;
+const _agora=new Date();
+let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
 let TURNO="a";
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
@@ -500,6 +499,15 @@ const dnom=(m,d)=>{const dt=new Date(cy,m,d);return DIAS[dt.getDay()===0?6:dt.ge
 const ds2s=(m,d)=>`${cy}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 const gm=()=>parseInt(document.getElementById("xm").value);
 const gt=()=>TURNO;
+// Seletor de mês (atalho ao lado das setas ‹ ›) — sempre os 12 meses do ano
+// exibido (cy), com o rótulo do ano certo. Antes era uma lista fixa escrita
+// à mão (Julho–Dezembro de 2026); agora se regenera sempre que o ano muda,
+// então nunca fica desatualizado.
+function renderSeletorMes(){
+  const sel=document.getElementById("xm");
+  if(!sel)return;
+  sel.innerHTML=MN.map((nome,i)=>`<option value="${i}"${i===cm?" selected":""}>${nome} ${cy}</option>`).join("");
+}
 const gRes=(mi,d,tu)=>RES[`${mi}_${d}_${tu}`]||0;
 const sRes=(mi,d,tu,v)=>{RES[`${mi}_${d}_${tu}`]=v;};
 const fmtData=ds=>{const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;};
@@ -2159,8 +2167,8 @@ async function desfazerVendaFolgaSemana(nome,ds,filtroFunc,filtroMes){
 }
 
 function cMod(){document.getElementById("modal").innerHTML="";}
-async function cPrev(){cm--;if(cm<0){cm=11;cy--;}dSel=null;document.getElementById("xm").value=cm;await carregarOperacional();renderCal();renderEmpty();}
-async function cNext(){cm++;if(cm>11){cm=0;cy++;}dSel=null;document.getElementById("xm").value=cm;await carregarOperacional();renderCal();renderEmpty();}
+async function cPrev(){cm--;if(cm<0){cm=11;cy--;}dSel=null;renderSeletorMes();await carregarOperacional();renderCal();renderEmpty();}
+async function cNext(){cm++;if(cm>11){cm=0;cy++;}dSel=null;renderSeletorMes();await carregarOperacional();renderCal();renderEmpty();}
 function showToast(msg){const el=document.createElement("div");el.className="toast";el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),3000);}
 
 // AGENDA
@@ -2968,6 +2976,7 @@ async function boot(){
 
   await migrarAgendaLocalStorage();
   await carregarAgenda();
+  renderSeletorMes();
   renderCal();renderEmpty();
 }
 
