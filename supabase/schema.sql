@@ -736,6 +736,17 @@ as $$
   );
 $$;
 
+-- Gerencial pode listar (não escrever) os acessos de nivel Consulta do
+-- proprio restaurante, pra tela self-service "Acessos" — toda escrita
+-- (criar/resetar PIN/remover) passa pela Edge Function "gerenciar-acesso",
+-- que usa a service_role key e valida as regras no servidor.
+create policy "Gerencial ve acessos de nivel consulta do seu restaurante"
+  on public.perfis_acesso for select
+  using (
+    public.tem_nivel(restaurante_id, array['gerencial'])
+    and nivel_acesso = 'consulta'
+  );
+
 create policy "Todos os niveis podem ver restaurantes"
   on public.restaurantes for select
   using (public.tem_nivel(id, array['master','gerencial','consulta']));

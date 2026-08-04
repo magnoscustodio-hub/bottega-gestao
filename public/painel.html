@@ -1747,6 +1747,7 @@ const MENU_SECOES=[
   {titulo:"Configurações",itens:[
     {chave:"funcionarios",label:"Funcionários",emoji:"👥",fn:"abrirConfigFuncionarios()"},
     {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
+    {chave:"acessos",label:"Acessos",emoji:"🔑",fn:"abrirConfigAcessos()",cls:"edit-only"},
   ]},
   {titulo:"Relatórios",itens:[
     {chave:"ausencias",label:"Faltas/Ausências",emoji:"📊",fn:"openHistorico()"},
@@ -1881,6 +1882,130 @@ async function enviarLogo(){
   aplicarLogoNoHeader();
   showToast("✅ Logo atualizado!");
   renderConfigLogo();
+}
+
+// --- Acessos (login individual Master/Gerencial/Consulta) ---
+// Toda escrita (criar/resetar PIN/remover) passa pela Edge Function
+// "gerenciar-acesso" (service_role, valida as regras no servidor de novo —
+// esta tela só reflete visualmente o que cada nível pode fazer).
+let ACESSOS=[];
+let acessoNovoFunc="",acessoNovoNivel="consulta";
+function abrirConfigAcessos(){
+  acessoNovoFunc="";acessoNovoNivel="consulta";
+  carregarAcessos().then(renderConfigAcessos);
+}
+async function carregarAcessos(){
+  const{data,error}=await supabaseClient
+    .from("perfis_acesso")
+    .select("id,nivel_acesso,funcionario_id,funcionarios(nome)")
+    .order("nivel_acesso");
+  if(error){avisoErro("Não foi possível carregar os acessos.");ACESSOS=[];return;}
+  ACESSOS=(data||[])
+    .filter(r=>r.nivel_acesso!=="master")
+    .map(r=>({id:r.id,nivel:r.nivel_acesso,funcionarioId:r.funcionario_id,nome:r.funcionarios?r.funcionarios.nome:"—"}));
+}
+function funcionariosSemAcesso(){
+  const idsComAcesso=new Set(ACESSOS.map(a=>a.funcionarioId).filter(Boolean));
+  const todos=[...new Set(Object.values(EQ).flatMap(e=>e.m))];
+  return todos.filter(nome=>{
+    const id=FUNC_ID_POR_NOME[nome];
+    return id&&!idsComAcesso.has(id);
+  }).sort();
+}
+function renderConfigAcessos(){
+  const souMaster=NIVEL_ACESSO==="master";
+  const niveisPermitidos=souMaster?["gerencial","consulta"]:["consulta"];
+  const disponiveis=funcionariosSemAcesso();
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>🔑 Acessos</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
+    <p class="msub">Login individual por PIN para a liderança — Master, você já entra com seu e-mail/senha.</p>`;
+  if(ACESSOS.length===0){
+    h+=`<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:13px">Nenhum acesso criado ainda.</div>`;
+  } else {
+    ACESSOS.forEach(a=>{
+      const podeMexer=souMaster||a.nivel==="consulta";
+      h+=`<div class="fs-setor" style="padding:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${podeMexer?"8px":"0"}">
+          <div><div class="fs-setor-nm">${a.nome}</div><div class="fs-setor-sub">${a.nivel==="gerencial"?"Gerencial":"Consulta"}</div></div>
+          ${bdg("Ativo","ok")}
+        </div>
+        ${podeMexer?`<div style="display:flex;gap:8px">
+          <button style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="abrirResetarPin('${a.id}','${a.nome}')">🔁 Resetar PIN</button>
+          <button style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid var(--dan-br,var(--red-br));background:var(--red-bg);color:var(--red);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="confirmarRemoverAcesso('${a.id}','${a.nome}')">🗑️ Remover</button>
+        </div>`:""}
+      </div>`;
+    });
+  }
+  h+=`<div style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
+    <div class="sec-title" style="margin-bottom:8px">+ Criar acesso</div>
+    ${disponiveis.length===0?`<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Todos os funcionários já têm acesso.</div>`:`
+    <select id="acs-func" class="msel">
+      <option value="">Selecionar funcionário...</option>
+      ${disponiveis.map(nome=>`<option value="${nome}"${acessoNovoFunc===nome?" selected":""}>${nome}</option>`).join("")}
+    </select>
+    <select id="acs-nivel" class="msel">
+      ${niveisPermitidos.map(n=>`<option value="${n}"${acessoNovoNivel===n?" selected":""}>${n==="gerencial"?"Gerencial":"Consulta"}</option>`).join("")}
+    </select>
+    <input type="password" id="acs-pin" inputmode="numeric" maxlength="6" placeholder="PIN de 6 dígitos" class="msel">
+    <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="criarAcesso()">Criar acesso</button>`}
+  </div>
+  <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function criarAcesso(){
+  const funcEl=document.getElementById("acs-func");
+  const nivelEl=document.getElementById("acs-nivel");
+  const pinEl=document.getElementById("acs-pin");
+  const nome=funcEl.value;
+  const nivel=nivelEl.value;
+  const pin=pinEl.value.trim();
+  if(!nome){avisoErro("Selecione um funcionário.");return;}
+  if(!/^\d{6}$/.test(pin)){avisoErro("O PIN precisa ter exatamente 6 dígitos.");return;}
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  const{data,error}=await supabaseClient.functions.invoke("gerenciar-acesso",{
+    body:{action:"criar",funcionario_id:funcionarioId,nivel,pin},
+  });
+  if(error||data?.error){avisoErro(data?.error||"Não foi possível criar o acesso.");return;}
+  showToast("✅ Acesso criado para "+nome+"!");
+  await carregarAcessos();
+  renderConfigAcessos();
+}
+function abrirResetarPin(id,nome){
+  document.getElementById("modal").innerHTML=`
+    <div class="mov" onclick="if(event.target===this)renderConfigAcessos()"><div class="mbox">
+      <h3>🔁 Resetar PIN — ${nome}</h3>
+      <p class="msub">Defina um novo PIN de 6 dígitos. O antigo deixa de funcionar.</p>
+      <input type="password" id="rst-pin" inputmode="numeric" maxlength="6" placeholder="Novo PIN de 6 dígitos" class="msel">
+      <div class="macts"><button onclick="renderConfigAcessos()">Cancelar</button><button class="bok" onclick="confirmarResetarPin('${id}','${nome}')">Salvar</button></div>
+    </div></div>`;
+}
+async function confirmarResetarPin(id,nome){
+  const pin=document.getElementById("rst-pin").value.trim();
+  if(!/^\d{6}$/.test(pin)){avisoErro("O PIN precisa ter exatamente 6 dígitos.");return;}
+  const{data,error}=await supabaseClient.functions.invoke("gerenciar-acesso",{
+    body:{action:"resetar_pin",perfil_id:id,pin},
+  });
+  if(error||data?.error){avisoErro(data?.error||"Não foi possível trocar o PIN.");return;}
+  showToast("✅ PIN de "+nome+" atualizado!");
+  renderConfigAcessos();
+}
+function confirmarRemoverAcesso(id,nome){
+  document.getElementById("modal").innerHTML=`
+    <div class="mov" onclick="if(event.target===this)renderConfigAcessos()"><div class="mbox">
+      <h3>🗑️ Remover acesso</h3>
+      <p class="msub">Tem certeza que deseja remover o acesso de <strong>${nome}</strong>? Essa ação não pode ser desfeita.</p>
+      <div class="macts"><button onclick="renderConfigAcessos()">Cancelar</button><button class="brd" onclick="removerAcesso('${id}','${nome}')">Sim, remover</button></div>
+    </div></div>`;
+}
+async function removerAcesso(id,nome){
+  const{data,error}=await supabaseClient.functions.invoke("gerenciar-acesso",{
+    body:{action:"deletar",perfil_id:id},
+  });
+  if(error||data?.error){avisoErro(data?.error||"Não foi possível remover o acesso.");return;}
+  showToast("🗑️ Acesso de "+nome+" removido.");
+  await carregarAcessos();
+  renderConfigAcessos();
 }
 
 // --- Praças e áreas de suporte ---
