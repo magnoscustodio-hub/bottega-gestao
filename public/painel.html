@@ -1897,12 +1897,18 @@ function abrirConfigAcessos(){
 async function carregarAcessos(){
   const{data,error}=await supabaseClient
     .from("perfis_acesso")
-    .select("id,nivel_acesso,funcionario_id,funcionarios(nome)")
+    .select("id,nivel_acesso,funcionario_id")
     .order("nivel_acesso");
   if(error){avisoErro("Não foi possível carregar os acessos.");ACESSOS=[];return;}
+  // Resolve o nome localmente via FUNC_ID_POR_NOME (já carregado no boot) em
+  // vez do embed funcionarios(nome) do PostgREST — funcionario_id é unique
+  // e anulável em perfis_acesso, e nessa combinação o embed automático
+  // não resolve (volta null mesmo com FK e RLS corretas).
+  const nomePorId={};
+  Object.entries(FUNC_ID_POR_NOME).forEach(([nome,id])=>{nomePorId[id]=nome;});
   ACESSOS=(data||[])
     .filter(r=>r.nivel_acesso!=="master")
-    .map(r=>({id:r.id,nivel:r.nivel_acesso,funcionarioId:r.funcionario_id,nome:r.funcionarios?r.funcionarios.nome:"—"}));
+    .map(r=>({id:r.id,nivel:r.nivel_acesso,funcionarioId:r.funcionario_id,nome:nomePorId[r.funcionario_id]||"—"}));
 }
 function funcionariosSemAcesso(){
   const idsComAcesso=new Set(ACESSOS.map(a=>a.funcionarioId).filter(Boolean));
