@@ -81,6 +81,8 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 
 .main{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
 @media(max-width:620px){.app{padding:12px}.main{grid-template-columns:1fr}.header-info h1{font-size:15px}}
+/* DESKTOP — regras aditivas, só entram em telas largas; mobile/tablet abaixo de 1024px continuam lendo exatamente as regras de sempre */
+@media(min-width:1024px){.app{max-width:1400px}.main{grid-template-columns:380px 1fr}}
 
 /* CALENDÁRIO */
 .cal{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow-md);border:1px solid var(--border)}
