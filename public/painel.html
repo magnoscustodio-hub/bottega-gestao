@@ -368,6 +368,7 @@ let USER_ID=null;
 // Nível de acesso do usuário logado ('master'/'gerencial'/'consulta'), resolvido em boot().
 let NIVEL_ACESSO="master";
 let FUNC_ID_POR_NOME={};
+let CARGO_POR_NOME={};
 let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
 let FJ=[];
 let FOLGAS={};
@@ -1150,13 +1151,34 @@ function renderEsc(d,mi){
     const disp=[...new Set([...nativos,...manualAqui])];
     const nx=disp.length<eq.min;
     const extras=getExtras(k,d,mi);
-    h+=`<div class="pc${nx&&extras.length===0?" px":""}">
+    // "Lideranças" (maitre, chef de fila, supervisor...) ganha um acabamento
+    // mais especial que o suporte comum — cargo junto do nome, selo circular
+    // e cores próprias — sem mexer na faixa de status (verde/dourado/vermelho)
+    // nem nos demais setores de suporte, que só ganham um reforço sutil da
+    // própria cor (fundo tingido + bolinha maior).
+    const isLid=k==="liderancas";
+    const cardStyle=isLid
+      ?`grid-column:1/-1;background:linear-gradient(135deg,${eq.c}18,${eq.c}05);border:1.5px solid ${eq.c};box-shadow:0 4px 16px ${eq.c}26`
+      :`background:${eq.c}0d`;
+    const cabecalho=isLid
+      ?`<div style="display:flex;align-items:center;gap:8px"><div style="width:32px;height:32px;border-radius:50%;background:${eq.c}22;color:${eq.c};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${eq.e}</div><span class="pn" style="font-size:14px;color:${eq.c}">${l}</span></div>`
+      :`<div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c};width:10px;height:10px"></span><span class="pn">${l}</span></div>`;
+    const chipsHtml=disp.map(g=>{
+      const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
+      if(isLid){
+        const cargo=CARGO_POR_NOME[g];
+        const rotulo=cargo?`${g}<span style="opacity:.6;font-weight:500"> · ${cargo}</span>`:g;
+        return `<span class="chip" style="background:${eq.c}0d;border:1px solid ${eq.c}4d"><span class="cdot" style="background:${eq.c}"></span>${rotulo}</span>`;
+      }
+      return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);
+    }).join("");
+    h+=`<div class="pc${nx&&extras.length===0?" px":""}" style="${cardStyle}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-        <div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c}"></span><span class="pn">${l}</span></div>
+        ${cabecalho}
         <span style="display:flex;align-items:center;gap:6px">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only" onclick="openEditarEscala(${d},${mi},'${k}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
-      <div>${disp.map(g=>{const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);}).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
+      <div>${chipsHtml}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
       <div class="extra-input-wrap edit-only"><input type="text" placeholder="+ extra..." id="ei-${k}" onkeydown="if(event.key==='Enter'){addExtra('${k}',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('${k}',${d},${mi},document.getElementById('ei-${k}').value.trim());renderEsc(${d},${mi})">+</button></div>
       </div>
     </div>`;
@@ -2864,17 +2886,18 @@ async function removerMenuEvento(id){
 async function carregarEquipeEPracas(){
   const{data:setoresRows}=await supabaseClient
     .from("setores")
-    .select("*, funcionarios(id,nome,praca_preferencial_id)")
+    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id)")
     .eq("restaurante_id",RESTAURANTE_ID)
     .order("ordem");
 
-  EQ={};FUNC_ID_POR_NOME={};
+  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};
   const pracaPreferidaPorFuncionario={};
   (setoresRows||[]).forEach(s=>{
     EQ[s.chave]={id:s.id,l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,m:[]};
     (s.funcionarios||[]).forEach(f=>{
       EQ[s.chave].m.push(f.nome);
       FUNC_ID_POR_NOME[f.nome]=f.id;
+      if(f.cargo)CARGO_POR_NOME[f.nome]=f.cargo;
       if(f.praca_preferencial_id){
         if(!pracaPreferidaPorFuncionario[f.praca_preferencial_id])pracaPreferidaPorFuncionario[f.praca_preferencial_id]=[];
         pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);
