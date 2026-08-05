@@ -506,9 +506,13 @@ create table if not exists public.escala_manual (
   id uuid primary key default gen_random_uuid(),
   restaurante_id uuid not null references public.restaurantes (id) on delete cascade,
   data date not null,
+  -- Escala manual é independente por turno: cada restaurante pode ter uma
+  -- dinâmica diferente entre Almoço e Jantar (ex: almoço rodízio, jantar à
+  -- la carte), então uma edição feita num turno nunca deve valer pro outro.
+  turno text not null default 'a' check (turno in ('a','j')),
   distribuicao jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now(),
-  unique (restaurante_id, data)
+  unique (restaurante_id, data, turno)
 );
 
 alter table public.escala_manual enable row level security;

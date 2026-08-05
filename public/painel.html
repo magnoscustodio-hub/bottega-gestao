@@ -442,12 +442,12 @@ async function persistirRemoverHorarioPontual(nome,ds){
   const{error}=await supabaseClient.from("horarios_pontuais").delete().eq("funcionario_id",funcionarioId).eq("data",ds);
   if(error)avisoErro("Não foi possível remover o horário pontual de "+nome+".");
 }
-async function persistirEscalaManual(ds,dist){
-  const{error}=await supabaseClient.from("escala_manual").upsert({restaurante_id:RESTAURANTE_ID,data:ds,distribuicao:dist,updated_at:new Date().toISOString()},{onConflict:"restaurante_id,data"});
+async function persistirEscalaManual(ds,dist,turno){
+  const{error}=await supabaseClient.from("escala_manual").upsert({restaurante_id:RESTAURANTE_ID,data:ds,turno,distribuicao:dist,updated_at:new Date().toISOString()},{onConflict:"restaurante_id,data,turno"});
   if(error)avisoErro("Não foi possível salvar a escala manual.");
 }
-async function persistirResetEscalaManual(ds){
-  const{error}=await supabaseClient.from("escala_manual").delete().eq("restaurante_id",RESTAURANTE_ID).eq("data",ds);
+async function persistirResetEscalaManual(ds,turno){
+  const{error}=await supabaseClient.from("escala_manual").delete().eq("restaurante_id",RESTAURANTE_ID).eq("data",ds).eq("turno",turno);
   if(error)avisoErro("Não foi possível redefinir a escala manual.");
 }
 async function persistirExtra(alvo,ds,nome,adicionar){
@@ -559,14 +559,18 @@ function pracaDeOrigemDoGarcom(nome){
 // Remove a pessoa de qualquer praça/setor onde esteja alocada no dia, sem
 // reabrir o modal de "Editar escala" (diferente de removerDaPraca, que é
 // chamada de dentro desse modal e por isso termina re-renderizando ele).
+// Ausência/férias valem pro dia inteiro, então mexe nos dois turnos — mesmo
+// que a escala manual de cada turno seja independente uma da outra.
 function removerDeQualquerPraca(nome,d,mi){
-  const escManual=getEscalaManual(d,mi);
-  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
-  let mudou=false;
-  Object.keys(dist).forEach(k=>{
-    if(dist[k].includes(nome)){dist[k]=dist[k].filter(n=>n!==nome);mudou=true;}
+  ["a","j"].forEach(tu=>{
+    const escManual=getEscalaManual(d,mi,tu);
+    const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
+    let mudou=false;
+    Object.keys(dist).forEach(k=>{
+      if(dist[k].includes(nome)){dist[k]=dist[k].filter(n=>n!==nome);mudou=true;}
+    });
+    if(mudou)setEscalaManual(d,mi,dist,tu);
   });
-  if(mudou)setEscalaManual(d,mi,dist);
 }
 function venderFolga(nome,d,mi){
   const ds=ds2s(mi,d);
@@ -581,7 +585,8 @@ function venderFolga(nome,d,mi){
     // moverParaPraca termina reabrindo o modal de "Editar escala" (ela foi
     // feita pra ser chamada de dentro dele) — como aqui não estamos nesse
     // modal, fechamos de novo em seguida pra não aparecer sem ter sido pedido.
-    if(pid){moverParaPraca(pid,nome,d,mi);cMod();}
+    // Folga vendida vale o dia inteiro, então escala nos dois turnos.
+    if(pid){moverParaPraca(pid,nome,d,mi,"a");moverParaPraca(pid,nome,d,mi,"j");cMod();}
   }
   renderEsc(d,mi);renderCal();
   showToast("✅ Folga vendida — "+nome+" escalado!");
@@ -601,9 +606,13 @@ function cancelarVendaFolga(nome,d,mi){
 }
 function totalFolgas(d,mi){return Object.values(tFolgas(d,mi)).reduce((s,v)=>s+v.length,0);}
 function getExtras(id,d,mi){return EXTRAS[`${id}_${mi}_${d}`]||[];}
-function getEscalaManual(d,mi){return ESCALA_MANUAL[`${mi}_${d}`]||null;}
-function setEscalaManual(d,mi,dist){ESCALA_MANUAL[`${mi}_${d}`]=dist;persistirEscalaManual(ds2s(mi,d),dist);}
-function resetEscalaManual(d,mi){delete ESCALA_MANUAL[`${mi}_${d}`];persistirResetEscalaManual(ds2s(mi,d));}
+// tu default = o turno que está sendo visualizado agora (gt()) — cobre todos
+// os call sites existentes (editar escala, praça, suporte) sem precisar
+// passar o turno explicitamente; só quem precisa mexer nos dois turnos de
+// propósito (ausência/férias, venda de folga) passa 'a'/'j' na mão.
+function getEscalaManual(d,mi,tu=gt()){return ESCALA_MANUAL[`${mi}_${d}_${tu}`]||null;}
+function setEscalaManual(d,mi,dist,tu=gt()){ESCALA_MANUAL[`${mi}_${d}_${tu}`]=dist;persistirEscalaManual(ds2s(mi,d),dist,tu);}
+function resetEscalaManual(d,mi,tu=gt()){delete ESCALA_MANUAL[`${mi}_${d}_${tu}`];persistirResetEscalaManual(ds2s(mi,d),tu);}
 function addExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(!EXTRAS[k])EXTRAS[k]=[];if(nome&&!EXTRAS[k].includes(nome)){EXTRAS[k].push(nome);persistirExtra(id,ds2s(mi,d),nome,true);}}
 function delExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(EXTRAS[k]){EXTRAS[k]=EXTRAS[k].filter(n=>n!==nome);persistirExtra(id,ds2s(mi,d),nome,false);}}
 
@@ -844,21 +853,21 @@ function getDistBase(d,mi){
   const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
   return distribuicaoAutomatica(dg);
 }
-function removerDaPraca(pid,nome,d,mi){
-  const escManual=getEscalaManual(d,mi);
+function removerDaPraca(pid,nome,d,mi,tu=gt()){
+  const escManual=getEscalaManual(d,mi,tu);
   const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
   if(dist[pid]) dist[pid]=dist[pid].filter(n=>n!==nome);
-  setEscalaManual(d,mi,dist);
+  setEscalaManual(d,mi,dist,tu);
   renderModalEscala(d,mi,dist);
 }
-function moverParaPraca(pid,nome,d,mi){
+function moverParaPraca(pid,nome,d,mi,tu=gt()){
   if(!nome) return;
-  const escManual=getEscalaManual(d,mi);
+  const escManual=getEscalaManual(d,mi,tu);
   const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
   Object.keys(dist).forEach(k=>{dist[k]=dist[k].filter(n=>n!==nome);});
   if(!dist[pid]) dist[pid]=[];
   dist[pid].push(nome);
-  setEscalaManual(d,mi,dist);
+  setEscalaManual(d,mi,dist,tu);
   renderModalEscala(d,mi,dist);
 }
 function salvarEscalaManual(d,mi){
@@ -3061,7 +3070,7 @@ async function carregarOperacional(){
 
   (escalaRes.data||[]).forEach(r=>{
     const dia=parseInt(r.data.split("-")[2],10);
-    ESCALA_MANUAL[`${cm}_${dia}`]=r.distribuicao;
+    ESCALA_MANUAL[`${cm}_${dia}_${r.turno||"a"}`]=r.distribuicao;
   });
 
   (fvRes.data||[]).forEach(r=>{
