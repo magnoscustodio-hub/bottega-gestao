@@ -975,6 +975,21 @@ function renderEsc(d,mi){
 
   h+=eventoBanner(ds);
 
+  // TURNO — auxílio visual pra esta tela do dia (não filtra dados, não trava edição).
+  // Fica ANTES do "return" de dia/turno fechado (logo abaixo) de propósito: é o
+  // único jeito de sair de um turno fechado (ex: Jantar às segundas) sem ter que
+  // ir em outro dia pra trocar de turno e voltar — sem isso, essa tela nem
+  // desenharia o <select>, e ficaria sem saída visível.
+  h+=`<div class="sec" style="background:var(--gold-bg);border-left:4px solid var(--gold)">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <div class="sec-title" style="margin-bottom:0;color:var(--gold);font-size:15px;letter-spacing:.02em">🍽️ Turno</div>
+      <select onchange="mudarTurnoDia(this.value)" style="font-size:14px;font-weight:800;padding:8px 14px;border-radius:var(--rs);border:2px solid var(--gold-br);background:white;color:var(--gold);cursor:pointer;font-family:inherit;box-shadow:var(--shadow)">
+        <option value="a"${tu==="a"?" selected":""}>☀️ Almoço</option>
+        <option value="j"${tu==="j"?" selected":""}>🌙 Jantar</option>
+      </select>
+    </div>
+  </div>`;
+
   if(fchJ){h+=`<div class="sec" style="color:var(--text2);font-size:13px;font-weight:500">🔒 Restaurante fechado. Nenhuma escala necessária.</div></div>`;document.getElementById("esc").innerHTML=h;return;}
 
   // RESERVAS
@@ -1073,17 +1088,6 @@ function renderEsc(d,mi){
     });
     h+=`</div></div>`;
   }
-
-  // TURNO — auxílio visual pra esta tela do dia (não filtra dados, não trava edição)
-  h+=`<div class="sec" style="background:var(--gold-bg);border-left:4px solid var(--gold)">
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <div class="sec-title" style="margin-bottom:0;color:var(--gold);font-size:15px;letter-spacing:.02em">🍽️ Turno</div>
-      <select onchange="mudarTurnoDia(this.value)" style="font-size:14px;font-weight:800;padding:8px 14px;border-radius:var(--rs);border:2px solid var(--gold-br);background:white;color:var(--gold);cursor:pointer;font-family:inherit;box-shadow:var(--shadow)">
-        <option value="a"${tu==="a"?" selected":""}>☀️ Almoço</option>
-        <option value="j"${tu==="j"?" selected":""}>🌙 Jantar</option>
-      </select>
-    </div>
-  </div>`;
 
   // PRAÇAS
   const temManual=!!getEscalaManual(d,mi);
