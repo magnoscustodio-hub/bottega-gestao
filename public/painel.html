@@ -718,6 +718,18 @@ function distribuicaoAutomatica(dg){
   PD.filter(p=>!p.fch&&!p.fimSemana).forEach(p=>{dg.forEach(g=>{if(!al.has(g)){dist[p.id].push(g);al.add(g);}});});
   return dist;
 }
+// Rola até a praça/setor sendo editado dentro do modal "Editar escala". Reaproveitada
+// tanto na abertura (focoInicial) quanto depois de adicionar/remover alguém — como
+// moverParaPraca/removerDaPraca re-renderizam o modal inteiro (innerHTML), o .mbox
+// perde o scrollTop de qualquer jeito; em vez de salvar/restaurar a posição bruta,
+// só rolamos de novo até a mesma praça que já sabemos que está aberta (_pracaEditSel).
+function scrollParaPracaEditada(pid){
+  if(!pid)return;
+  setTimeout(()=>{
+    const el=document.getElementById("escsel-"+pid);
+    if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+  },80);
+}
 function openEditarEscala(d,mi,focoInicial){
   const escManual=getEscalaManual(d,mi);
   let distAtual;
@@ -729,12 +741,7 @@ function openEditarEscala(d,mi,focoInicial){
   }
   window._pracaEditSel=focoInicial||null;
   renderModalEscala(d,mi,distAtual);
-  if(focoInicial){
-    setTimeout(()=>{
-      const el=document.getElementById("escsel-"+focoInicial);
-      if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
-    },80);
-  }
+  scrollParaPracaEditada(focoInicial);
 }
 function getTodosDisponiveis(d,mi){
   // garçons + toda equipe de suporte disponível no dia
@@ -859,6 +866,7 @@ function removerDaPraca(pid,nome,d,mi,tu=gt()){
   if(dist[pid]) dist[pid]=dist[pid].filter(n=>n!==nome);
   setEscalaManual(d,mi,dist,tu);
   renderModalEscala(d,mi,dist);
+  scrollParaPracaEditada(window._pracaEditSel);
 }
 function moverParaPraca(pid,nome,d,mi,tu=gt()){
   if(!nome) return;
@@ -869,6 +877,7 @@ function moverParaPraca(pid,nome,d,mi,tu=gt()){
   dist[pid].push(nome);
   setEscalaManual(d,mi,dist,tu);
   renderModalEscala(d,mi,dist);
+  scrollParaPracaEditada(window._pracaEditSel);
 }
 function salvarEscalaManual(d,mi){
   cMod();renderEsc(d,mi);
