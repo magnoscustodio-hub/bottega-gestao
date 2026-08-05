@@ -140,6 +140,7 @@ Deno.serve(async (req: Request) => {
         id: novoUsuario.user.id,
         restaurante_id: restauranteId,
         funcionario_id,
+        email_login: emailLogin,
         nivel_acesso: nivel,
         metodo_login: 'pin',
       })
