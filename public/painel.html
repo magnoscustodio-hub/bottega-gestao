@@ -972,7 +972,7 @@ function renderEsc(d,mi){
   h+=`<div class="sec bg2">
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
       <span style="font-size:13px;font-weight:700;flex:1;color:var(--text)">📋 Reservas confirmadas</span>
-      <input id="inp-res" class="rinp" type="number" min="0" max="500" value="${res||""}" placeholder="0" oninput="onRes(${mi},${d},'${tu}')">
+      <input id="inp-res" class="rinp" type="number" min="0" max="500" value="${res||""}" placeholder="0" onchange="onRes(${mi},${d},'${tu}')" onkeydown="if(event.key==='Enter')this.blur()">
       <span style="font-size:12px;color:var(--text2);font-weight:600">pax</span>
     </div>
     ${acima?`<div style="margin-top:8px;font-size:12px;color:var(--yellow);font-weight:600;display:flex;align-items:center;gap:5px">⚠️ Acima da média — ajustado para ${pax} pax.</div>`:""}
