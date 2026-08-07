@@ -432,6 +432,10 @@ create table if not exists public.extras (
   alvo text not null,
   data date not null,
   nome text not null,
+  -- Valor (R$) daquele extra naquele dia específico — opcional, não é um
+  -- valor fixo por pessoa (a mesma pessoa pode custar diferente em dias
+  -- diferentes). Usado no relatório "Extras" (quantidade/custo por semana).
+  valor numeric(10,2),
   created_at timestamptz not null default now()
 );
 

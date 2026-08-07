@@ -450,9 +450,9 @@ async function persistirResetEscalaManual(ds,turno){
   const{error}=await supabaseClient.from("escala_manual").delete().eq("restaurante_id",RESTAURANTE_ID).eq("data",ds).eq("turno",turno);
   if(error)avisoErro("Não foi possível redefinir a escala manual.");
 }
-async function persistirExtra(alvo,ds,nome,adicionar){
+async function persistirExtra(alvo,ds,nome,adicionar,valor){
   if(adicionar){
-    const{error}=await supabaseClient.from("extras").insert({restaurante_id:RESTAURANTE_ID,alvo,data:ds,nome});
+    const{error}=await supabaseClient.from("extras").insert({restaurante_id:RESTAURANTE_ID,alvo,data:ds,nome,valor:valor||null});
     if(error)avisoErro("Não foi possível salvar o extra.");
   }else{
     const{error}=await supabaseClient.from("extras").delete().eq("restaurante_id",RESTAURANTE_ID).eq("alvo",alvo).eq("data",ds).eq("nome",nome);
@@ -613,8 +613,55 @@ function getExtras(id,d,mi){return EXTRAS[`${id}_${mi}_${d}`]||[];}
 function getEscalaManual(d,mi,tu=gt()){return ESCALA_MANUAL[`${mi}_${d}_${tu}`]||null;}
 function setEscalaManual(d,mi,dist,tu=gt()){ESCALA_MANUAL[`${mi}_${d}_${tu}`]=dist;persistirEscalaManual(ds2s(mi,d),dist,tu);}
 function resetEscalaManual(d,mi,tu=gt()){delete ESCALA_MANUAL[`${mi}_${d}_${tu}`];persistirResetEscalaManual(ds2s(mi,d),tu);}
-function addExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(!EXTRAS[k])EXTRAS[k]=[];if(nome&&!EXTRAS[k].includes(nome)){EXTRAS[k].push(nome);persistirExtra(id,ds2s(mi,d),nome,true);}}
-function delExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(EXTRAS[k]){EXTRAS[k]=EXTRAS[k].filter(n=>n!==nome);persistirExtra(id,ds2s(mi,d),nome,false);}}
+// EXTRAS[k] guarda {nome,valor} (valor é opcional — null quando não preenchido,
+// mas o extra continua contando na quantidade normalmente).
+function addExtra(id,d,mi,nome,valorStr){
+  const k=`${id}_${mi}_${d}`;
+  if(!EXTRAS[k])EXTRAS[k]=[];
+  if(nome&&!EXTRAS[k].some(e=>e.nome===nome)){
+    const num=parseFloat((valorStr||"").toString().replace(",","."));
+    const valor=(!isNaN(num)&&num>0)?num:null;
+    EXTRAS[k].push({nome,valor});
+    persistirExtra(id,ds2s(mi,d),nome,true,valor);
+  }
+}
+function delExtra(id,d,mi,nome){const k=`${id}_${mi}_${d}`;if(EXTRAS[k]){EXTRAS[k]=EXTRAS[k].filter(e=>e.nome!==nome);persistirExtra(id,ds2s(mi,d),nome,false);}}
+// Formata o valor de um extra pro chip/relatório: "80" (inteiro) ou "80,50" —
+// sem casas decimais forçadas quando o valor é redondo. null quando não tem valor.
+function fmtValorExtra(v){
+  if(v==null||v===0)return null;
+  return (v%1===0)?String(v):v.toFixed(2).replace(".",",");
+}
+// Nome legível da área a partir do "alvo" salvo em extras (id de praça, chave
+// de setor de suporte, ou o caso especial "esteril" da Esterilização).
+function nomeDaAreaExtra(alvo){
+  if(alvo==="esteril")return "Esterilização";
+  const praca=PD.find(p=>p.id===alvo);
+  if(praca)return praca.n;
+  if(EQ[alvo])return EQ[alvo].l;
+  return alvo;
+}
+// Chips dos extras já adicionados numa praça/setor — mostra o valor (quando
+// preenchido) direto no chip, pra dar visibilidade de custo sem precisar abrir
+// o relatório. Reaproveitado pelas Praças, Suporte e Esterilização.
+function chipsExtrasHtml(extras,alvo,d,mi){
+  return extras.map(e=>{
+    const valorTxt=fmtValorExtra(e.valor);
+    return `<span class="extra-chip">⭐${e.nome}${valorTxt?` R$${valorTxt}`:""}<button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
+  }).join("");
+}
+// Campo "+ extra..." (nome + valor opcional em R$). Enter em qualquer um dos
+// dois campos, ou o botão "+", adicionam com o que estiver preenchido — digitar
+// só o nome e apertar Enter continua funcionando exatamente como antes.
+function inputWrapExtraHtml(alvo,d,mi){
+  const idn=`ei-${alvo}`,idv=`eiv-${alvo}`;
+  const submeter=`addExtra('${alvo}',${d},${mi},document.getElementById('${idn}').value.trim(),document.getElementById('${idv}').value);renderEsc(${d},${mi});`;
+  return `<div class="extra-input-wrap edit-only">
+    <input type="text" placeholder="+ extra..." id="${idn}" onkeydown="if(event.key==='Enter'){${submeter}}">
+    <input type="number" step="0.01" min="0" placeholder="R$" id="${idv}" style="width:46px" onkeydown="if(event.key==='Enter'){${submeter}}">
+    <button onclick="${submeter}">+</button>
+  </div>`;
+}
 
 const bdg=(t,c)=>`<span class="bdg ${c}">${t}</span>`;
 const chip=(n,c)=>`<span class="chip"><span class="cdot" style="background:${c}"></span>${n}</span>`;
@@ -1135,8 +1182,8 @@ function renderEsc(d,mi){
           return chipComHorario(g,cor,hi);
         }
         return chip(g,cor);
-      }).join("")}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${p.id}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
-      <div class="extra-input-wrap edit-only"><input type="text" placeholder="+ extra..." id="ei-${p.id}" onkeydown="if(event.key==='Enter'){addExtra('${p.id}',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('${p.id}',${d},${mi},document.getElementById('ei-${p.id}').value.trim());renderEsc(${d},${mi})">+</button></div>
+      }).join("")}${chipsExtrasHtml(extras,p.id,d,mi)}
+      ${inputWrapExtraHtml(p.id,d,mi)}
       </div>
     </div>`;
   });
@@ -1161,8 +1208,8 @@ function renderEsc(d,mi){
       </div>
       <div class="ps" style="margin-bottom:6px">Sempre extra · fins de semana</div>
       <div style="display:flex;flex-wrap:wrap;gap:2px">
-        ${extEst.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('esteril',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
-        <div class="extra-input-wrap edit-only"><input type="text" placeholder="+ extra..." id="ei-esteril" onkeydown="if(event.key==='Enter'){addExtra('esteril',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('esteril',${d},${mi},document.getElementById('ei-esteril').value.trim());renderEsc(${d},${mi})">+</button></div>
+        ${chipsExtrasHtml(extEst,'esteril',d,mi)}
+        ${inputWrapExtraHtml('esteril',d,mi)}
       </div>
     </div>`;
   }
@@ -1216,8 +1263,8 @@ function renderEsc(d,mi){
         <span style="display:flex;align-items:center;gap:6px">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only" onclick="openEditarEscala(${d},${mi},'${k}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
-      <div>${chipsHtml}${extras.map(e=>`<span class="extra-chip">⭐${e}<button onclick="delExtra('${k}',${d},${mi},'${e}');renderEsc(${d},${mi})">×</button></span>`).join("")}
-      <div class="extra-input-wrap edit-only"><input type="text" placeholder="+ extra..." id="ei-${k}" onkeydown="if(event.key==='Enter'){addExtra('${k}',${d},${mi},this.value.trim());renderEsc(${d},${mi});}"><button onclick="addExtra('${k}',${d},${mi},document.getElementById('ei-${k}').value.trim());renderEsc(${d},${mi})">+</button></div>
+      <div>${chipsHtml}${chipsExtrasHtml(extras,k,d,mi)}
+      ${inputWrapExtraHtml(k,d,mi)}
       </div>
     </div>`;
   });
@@ -1814,6 +1861,7 @@ const MENU_SECOES=[
     {chave:"atestados",label:"Atestados médicos",emoji:"🩺",fn:"openRelatorioAtestados()"},
     {chave:"folgas-vendidas",label:"Vendas de folga de domingo",emoji:"💰",fn:"openRelatorioFolgasVendidas()"},
     {chave:"folgas-vendidas-semana",label:"Vendas de folga em dias de semana",emoji:"💵",fn:"openRelatorioFolgasVendidasSemana()"},
+    {chave:"extras",label:"Extras",emoji:"⭐",fn:"openRelatorioExtras()"},
   ]},
 ];
 function abrirDrawer(){
@@ -2372,6 +2420,73 @@ async function desfazerVendaFolgaSemana(nome,ds,filtroFunc,filtroMes){
   HISTORICO_FOLGAS_VENDIDAS_SEMANA=HISTORICO_FOLGAS_VENDIDAS_SEMANA.filter(h=>!(h.func===nome&&h.ds===ds));
   renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes);
   showToast("↩ Venda de folga desfeita.");
+}
+
+// --- Relatório: Extras (quantidade e custo, por semana) ---
+// Diferente dos outros relatórios (que pré-carregam um histórico inteiro no
+// boot()), aqui busco só a semana visualizada, direto do banco, a cada
+// navegação — mais simples que manter um histórico completo em memória pra
+// uma tela que já é naturalmente recortada por semana.
+let EXTRAS_SEMANA_REF=null; // uma data (Date) dentro da semana em exibição
+let EXTRAS_SEMANA_DADOS=[];
+function segundaDaSemana(dt){
+  const d=new Date(dt);
+  const dow=d.getDay();
+  d.setDate(d.getDate()+(dow===0?-6:1-dow));
+  d.setHours(0,0,0,0);
+  return d;
+}
+function dataParaISO(dt){
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+}
+async function openRelatorioExtras(){
+  EXTRAS_SEMANA_REF=EXTRAS_SEMANA_REF||new Date();
+  await carregarRelatorioExtras();
+}
+async function carregarRelatorioExtras(){
+  const seg=segundaDaSemana(EXTRAS_SEMANA_REF),dom=new Date(seg);dom.setDate(dom.getDate()+6);
+  const{data,error}=await supabaseClient.from("extras").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",dataParaISO(seg)).lte("data",dataParaISO(dom));
+  if(error){avisoErro("Não foi possível carregar os extras da semana.");return;}
+  EXTRAS_SEMANA_DADOS=(data||[]).map(r=>({nome:r.nome,ds:r.data,area:nomeDaAreaExtra(r.alvo),valor:r.valor!=null?Number(r.valor):null}));
+  renderRelatorioExtras();
+}
+async function extrasSemanaPrev(){const seg=segundaDaSemana(EXTRAS_SEMANA_REF);seg.setDate(seg.getDate()-7);EXTRAS_SEMANA_REF=seg;await carregarRelatorioExtras();}
+async function extrasSemanaNext(){const seg=segundaDaSemana(EXTRAS_SEMANA_REF);seg.setDate(seg.getDate()+7);EXTRAS_SEMANA_REF=seg;await carregarRelatorioExtras();}
+function renderRelatorioExtras(){
+  const dados=EXTRAS_SEMANA_DADOS;
+  const seg=segundaDaSemana(EXTRAS_SEMANA_REF),dom=new Date(seg);dom.setDate(dom.getDate()+6);
+  const qtd=dados.length;
+  const total=dados.reduce((s,r)=>s+(r.valor||0),0);
+  const porArea={};
+  dados.forEach(r=>{if(!porArea[r.area])porArea[r.area]={qtd:0,total:0};porArea[r.area].qtd++;porArea[r.area].total+=(r.valor||0);});
+  const areasOrdenadas=Object.entries(porArea).sort((a,b)=>b[1].total-a[1].total);
+  const dadosOrdenados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
+    <h3>⭐ Extras</h3>
+    <div class="cal-nav" style="margin-bottom:12px">
+      <button onclick="extrasSemanaPrev()">‹</button>
+      <div class="cal-title">${fmtData(dataParaISO(seg))} – ${fmtData(dataParaISO(dom))}</div>
+      <button onclick="extrasSemanaNext()">›</button>
+    </div>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-icon gold">⭐</div><div class="stat-num">${qtd}</div><div class="stat-label">Extras</div></div>
+      <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">R$${fmtValorExtra(total)||"0"}</div><div class="stat-label">Total gasto</div></div>
+    </div>`;
+  if(dados.length===0){
+    h+=`<div class="aus-empty">📭 Nenhum extra chamado nessa semana.</div>`;
+  } else {
+    h+=`<div class="fs-setor" style="margin-bottom:12px">
+      <div class="fs-setor-hd"><div class="fs-setor-left"><span style="font-size:20px">📊</span>
+        <div><div class="fs-setor-nm">Por área</div><div class="fs-setor-sub">${areasOrdenadas.length} área${areasOrdenadas.length!==1?"s":""}</div></div>
+      </div></div>
+      <div class="fs-setor-body">${areasOrdenadas.map(([area,v])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${area}</span><span style="display:flex;align-items:center;gap:8px"><span style="color:var(--text2)">${v.qtd}×</span><span style="font-weight:800;color:var(--green)">R$${fmtValorExtra(v.total)||"0"}</span></span></div>`).join("")}</div>
+    </div>
+    <table class="aus-table"><thead><tr><th>Data</th><th>Nome</th><th>Área</th><th>Valor</th></tr></thead><tbody>
+      ${dadosOrdenados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.nome}</td><td style="color:var(--text2)">${r.area}</td><td>${r.valor?"R$"+fmtValorExtra(r.valor):"—"}</td></tr>`).join("")}
+    </tbody></table>`;
+  }
+  h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
 }
 
 function cMod(){document.getElementById("modal").innerHTML="";}
@@ -3092,7 +3207,7 @@ async function carregarOperacional(){
     const dia=parseInt(r.data.split("-")[2],10);
     const k=`${r.alvo}_${cm}_${dia}`;
     if(!EXTRAS[k])EXTRAS[k]=[];
-    EXTRAS[k].push(r.nome);
+    EXTRAS[k].push({nome:r.nome,valor:r.valor!=null?Number(r.valor):null});
   });
 
   (escalaRes.data||[]).forEach(r=>{
