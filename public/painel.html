@@ -1189,6 +1189,20 @@ function renderEsc(d,mi){
       :`<div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c};width:10px;height:10px"></span><span class="pn">${l}</span></div>`;
     const chipsHtml=disp.map(g=>{
       const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
+      // Mesma checagem que as Praças já fazem: se a pessoa é "de casa" em outro
+      // setor (ex: Liderança) e foi alocada manualmente aqui, mostra o nome com
+      // o emoji/cor do setor de origem — é esse emoji que sinaliza "essa pessoa
+      // normalmente não é daqui". Sem isso, um líder alocado num setor de
+      // Suporte diferente do dele (ex: Boqueta Comida) ficava com o mesmo
+      // visual de qualquer outro colaborador comum, sem destaque nenhum.
+      const skOrigem=Object.keys(EQ).find(k2=>EQ[k2].m.includes(g));
+      if(skOrigem&&skOrigem!==k){
+        const corOrigem=EQ[skOrigem].c;
+        if(hi){
+          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+        }
+        return `<span class="chip" style="background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span>`;
+      }
       if(isLid){
         const cargo=CARGO_POR_NOME[g];
         const rotulo=cargo?`${g}<span style="opacity:.6;font-weight:500"> · ${cargo}</span>`:g;
