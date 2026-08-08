@@ -224,6 +224,9 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .macts .bwn{background:var(--yellow);color:white;border-color:var(--yellow)}
 .macts .bwp{background:#25D366;color:white;border-color:#25D366}
 .macts .brd{background:var(--red);color:white;border-color:var(--red)}
+.rel-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.btn-xlsx{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:6px 12px;border-radius:20px;border:1.5px solid #1D6F42;background:#1D6F42;color:white;cursor:pointer;font-family:inherit;box-shadow:var(--shadow);white-space:nowrap;flex-shrink:0}
+.btn-xlsx:hover{background:#175935}
 
 /* FOLGAS MODAL */
 .fs-setor{background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:8px;box-shadow:var(--shadow)}
@@ -354,6 +357,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/mesas-config.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.mini.min.js"></script>
 <script>
 const supabaseClient = window.supabase.createClient(
   'https://ufsdmlyrbkvgrlemvzde.supabase.co',
@@ -514,6 +518,20 @@ function renderSeletorMes(){
 const gRes=(mi,d,tu)=>RES[`${mi}_${d}_${tu}`]||0;
 const sRes=(mi,d,tu,v)=>{RES[`${mi}_${d}_${tu}`]=v;};
 const fmtData=ds=>{const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;};
+const fmtDataArquivo=ds=>{const[y,m,d]=ds.split("-");return `${d}-${m}-${y}`;};
+const nomeMesArquivo=mesStr=>{const[y,mo]=mesStr.split("-");return `${MN[parseInt(mo,10)-1].toLowerCase()}-${y}`;};
+const sanitizarNomeArquivo=s=>(s||"").trim().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g,"-");
+// Gera e baixa um .xlsx a partir de uma matriz de linhas (array de arrays) — usado
+// por todos os botões "Exportar Excel" dos relatórios. XLSX vem do SheetJS
+// (carregado via CDN, mesmo padrão já usado pro supabase-js) — se por algum
+// motivo não tiver carregado (offline, CDN fora do ar), avisa em vez de quebrar.
+function exportarPlanilha(nomeArquivo,nomeAba,aoa){
+  if(typeof XLSX==="undefined"){avisoErro("Não foi possível carregar o gerador de Excel. Verifique sua conexão e tente de novo.");return;}
+  const wb=XLSX.utils.book_new();
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+  XLSX.utils.book_append_sheet(wb,ws,(nomeAba||"Planilha").slice(0,31));
+  XLSX.writeFile(wb,nomeArquivo);
+}
 function getSetorFunc(n){for(const[k,eq]of Object.entries(EQ))if(eq.m.includes(n))return eq.l;return "—";}
 
 function eFolga(n,d,mi){
@@ -1494,7 +1512,10 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
-    <h3>${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
+    <div class="rel-header">
+      <h3 style="margin-bottom:0">${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
+      <button class="btn-xlsx" onclick="exportarAusenciasXlsx('${filtroFunc}','${filtroMes}',${argMotivo})" title="Exportar para Excel">📥 Excel</button>
+    </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon ${motivoFixo?"blue":"red"}">${motivoFixo?"🩺":"🚫"}</div><div class="stat-num">${dados.length}</div><div class="stat-label">${motivoFixo?"Atestados":"Registros"}</div></div>
       <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
@@ -1551,6 +1572,21 @@ _Total: ${dados.length} registro${dados.length!==1?"s":""}_`;
   return txt;
 }
 function copiarWA(){const el=document.getElementById("wa-text");if(!el)return;el.select();try{document.execCommand("copy");showToast("✅ Copiado! Cole no WhatsApp");}catch(e){navigator.clipboard?.writeText(el.value).then(()=>showToast("✅ Copiado!")).catch(()=>showToast("Copie o texto manualmente"));}}
+// Recalcula os mesmos dados filtrados que renderHistorico já mostra na tela
+// (mesmo filtroFunc/filtroMes/motivoFixo) e exporta em .xlsx — cobre Ausências
+// e Atestados médicos, que reaproveitam essa mesma função de render.
+function exportarAusenciasXlsx(filtroFunc,filtroMes,motivoFixo){
+  const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
+  let dados=base;
+  if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
+  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const aoa=[["Data","Funcionário","Setor","Motivo"],...dados.map(r=>[fmtData(r.ds),r.func,r.setor,r.motivo])];
+  const nomeBase=motivoFixo?"atestados":"faltas-ausencias";
+  const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
+  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
+  exportarPlanilha(`${nomeBase}${sufixoFunc}_${periodo}.xlsx`,motivoFixo||"Ausências",aoa);
+}
 
 // FOLGAS
 function openFolgasMes(){
@@ -2321,7 +2357,10 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
-    <h3>💰 Vendas de Folga de Domingo</h3>
+    <div class="rel-header">
+      <h3 style="margin-bottom:0">💰 Vendas de Folga de Domingo</h3>
+      <button class="btn-xlsx" onclick="exportarFolgasVendidasXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
+    </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
       <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
@@ -2371,7 +2410,10 @@ function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
-    <h3>💰 Vendas de Folga em Dias de Semana</h3>
+    <div class="rel-header">
+      <h3 style="margin-bottom:0">💰 Vendas de Folga em Dias de Semana</h3>
+      <button class="btn-xlsx" onclick="exportarFolgasVendidasSemanaXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
+    </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
       <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
@@ -2402,6 +2444,26 @@ function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
   h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div>`;
   h+=`</div></div>`;
   document.getElementById("modal").innerHTML=h;
+}
+function exportarFolgasVendidasXlsx(filtroFunc,filtroMes){
+  let dados=HISTORICO_FOLGAS_VENDIDAS;
+  if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
+  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const aoa=[["Data","Funcionário","Setor"],...dados.map(r=>[fmtData(r.ds),r.func,r.setor])];
+  const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
+  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
+  exportarPlanilha(`vendas-folga-domingo${sufixoFunc}_${periodo}.xlsx`,"Vendas de Folga",aoa);
+}
+function exportarFolgasVendidasSemanaXlsx(filtroFunc,filtroMes){
+  let dados=HISTORICO_FOLGAS_VENDIDAS_SEMANA;
+  if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
+  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const aoa=[["Data","Funcionário","Setor"],...dados.map(r=>[fmtData(r.ds),r.func,r.setor])];
+  const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
+  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
+  exportarPlanilha(`vendas-folga-semana${sufixoFunc}_${periodo}.xlsx`,"Vendas de Folga Semana",aoa);
 }
 // Desfazer uma venda de folga de dia de semana a partir do relatório (não da
 // tela do dia). Se o mês/ano da venda for o que está carregado em memória
@@ -2463,10 +2525,11 @@ function renderRelatorioExtras(){
   const dadosOrdenados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <h3>⭐ Extras</h3>
-    <div class="cal-nav" style="margin-bottom:12px">
+    <div class="cal-nav" style="margin-bottom:12px;gap:6px">
       <button onclick="extrasSemanaPrev()">‹</button>
       <div class="cal-title">${fmtData(dataParaISO(seg))} – ${fmtData(dataParaISO(dom))}</div>
       <button onclick="extrasSemanaNext()">›</button>
+      <button class="btn-xlsx" style="border-radius:var(--rs);width:auto;height:auto;padding:8px 10px" onclick="exportarExtrasXlsx()" title="Exportar para Excel">📥</button>
     </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon gold">⭐</div><div class="stat-num">${qtd}</div><div class="stat-label">Extras</div></div>
@@ -2487,6 +2550,19 @@ function renderRelatorioExtras(){
   }
   h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
+}
+function exportarExtrasXlsx(){
+  const seg=segundaDaSemana(EXTRAS_SEMANA_REF),dom=new Date(seg);dom.setDate(dom.getDate()+6);
+  const dados=[...EXTRAS_SEMANA_DADOS].sort((a,b)=>a.ds.localeCompare(b.ds));
+  const qtd=dados.length,total=dados.reduce((s,r)=>s+(r.valor||0),0);
+  const aoa=[
+    ["Quantidade de extras",qtd],
+    ["Valor total gasto (R$)",total],
+    [],
+    ["Data","Nome","Área","Valor (R$)"],
+    ...dados.map(r=>[fmtData(r.ds),r.nome,r.area,r.valor||0]),
+  ];
+  exportarPlanilha(`extras_${fmtDataArquivo(dataParaISO(seg))}_a_${fmtDataArquivo(dataParaISO(dom))}.xlsx`,"Extras",aoa);
 }
 
 function cMod(){document.getElementById("modal").innerHTML="";}
