@@ -339,6 +339,9 @@ create table if not exists public.folgas_vendidas (
   funcionario_id uuid not null references public.funcionarios (id) on delete cascade,
   data date not null,
   tipo text not null default 'domingo' check (tipo in ('domingo','semana')),
+  -- Valor (R$) pago naquela venda de folga específica — opcional, mesmo
+  -- padrão de extras.valor. Usado nos relatórios de Vendas de Folga.
+  valor numeric(10,2),
   created_at timestamptz not null default now(),
   unique (funcionario_id, data)
 );
