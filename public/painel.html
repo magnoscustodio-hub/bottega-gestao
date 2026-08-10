@@ -1533,11 +1533,23 @@ function removerPeriodoAusencia(nome,ini,fim){
 
 // HISTÓRICO
 let relResumoAberto=true;
-function openHistorico(){relResumoAberto=true;renderHistorico("todos","todos");}
+function openHistorico(){
+  relResumoAberto=true;
+  // Abre já filtrado no mês vigente (data real de hoje, não o mês que o
+  // calendário porventura esteja mostrando) — gerente pode trocar depois.
+  const hoje=new Date();
+  const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
+  renderHistorico("todos",mesAtual);
+}
 function renderHistorico(filtroFunc,filtroMes){
   const base=HISTORICO;
   const funcs=[...new Set(base.map(h=>h.func))].sort();
-  const meses=[...new Set(base.map(h=>h.ds.slice(0,7)))].sort();
+  const meses=[...new Set(base.map(h=>h.ds.slice(0,7)))];
+  // Garante que o mês do filtro atual apareça no <select> mesmo sem nenhum
+  // registro ainda (ex: mês vigente recém-começado, sem ausência lançada) —
+  // sem isso o dropdown ficaria sem nenhuma opção batendo com o filtro ativo.
+  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
+  meses.sort();
   let dados=base;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
