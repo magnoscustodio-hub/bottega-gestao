@@ -2407,13 +2407,19 @@ let fvResumoAberto=true;
 // feitas na sessão atual (só um F5 completo atualizava antes desse fix).
 async function openRelatorioFolgasVendidas(){
   fvResumoAberto=true;
-  renderRelatorioFolgasVendidas("todos","todos");
+  // Mesmo padrão do relatório de Faltas e Atestados: abre já no mês vigente
+  // (data real de hoje), não em "Todos os meses" — gerente troca se quiser.
+  const hoje=new Date();
+  const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
+  renderRelatorioFolgasVendidas("todos",mesAtual);
   await carregarHistoricoFolgasVendidas();
-  renderRelatorioFolgasVendidas("todos","todos");
+  renderRelatorioFolgasVendidas("todos",mesAtual);
 }
 function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.func))].sort();
-  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))].sort();
+  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))];
+  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
+  meses.sort();
   let dados=HISTORICO_FOLGAS_VENDIDAS;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
@@ -2462,13 +2468,17 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
 let fvSemanaResumoAberto=true;
 async function openRelatorioFolgasVendidasSemana(){
   fvSemanaResumoAberto=true;
-  renderRelatorioFolgasVendidasSemana("todos","todos");
+  const hoje=new Date();
+  const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
+  renderRelatorioFolgasVendidasSemana("todos",mesAtual);
   await carregarHistoricoFolgasVendidasSemana();
-  renderRelatorioFolgasVendidasSemana("todos","todos");
+  renderRelatorioFolgasVendidasSemana("todos",mesAtual);
 }
 function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS_SEMANA.map(h=>h.func))].sort();
-  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS_SEMANA.map(h=>h.ds.slice(0,7)))].sort();
+  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS_SEMANA.map(h=>h.ds.slice(0,7)))];
+  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
+  meses.sort();
   let dados=HISTORICO_FOLGAS_VENDIDAS_SEMANA;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
