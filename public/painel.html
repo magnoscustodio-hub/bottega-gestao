@@ -1440,8 +1440,8 @@ function editarAusencia(nome,d,mi){
   _ausenciaEditorVoltar=()=>{if(dSel!=null)renderEsc(dSel,gm());};
   abrirEdicaoAusencia(nome,motivoAtual,ds);
 }
-function editarPeriodoAusenciaDoRelatorio(nome,motivo,dsReferencia,filtroFuncVoltar,filtroMesVoltar,motivoFixoVoltar){
-  _ausenciaEditorVoltar=()=>{renderHistorico(filtroFuncVoltar,filtroMesVoltar,motivoFixoVoltar);};
+function editarPeriodoAusenciaDoRelatorio(nome,motivo,dsReferencia,filtroFuncVoltar,filtroMesVoltar){
+  _ausenciaEditorVoltar=()=>{renderHistorico(filtroFuncVoltar,filtroMesVoltar);};
   abrirEdicaoAusencia(nome,motivo,dsReferencia);
 }
 function fecharEdicaoAusencia(){
@@ -1534,10 +1534,8 @@ function removerPeriodoAusencia(nome,ini,fim){
 // HISTÓRICO
 let relResumoAberto=true;
 function openHistorico(){relResumoAberto=true;renderHistorico("todos","todos");}
-function openRelatorioAtestados(){relResumoAberto=true;renderHistorico("todos","todos","Atestado médico");}
-function renderHistorico(filtroFunc,filtroMes,motivoFixo){
-  const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
-  const argMotivo=motivoFixo?`'${motivoFixo}'`:"null";
+function renderHistorico(filtroFunc,filtroMes){
+  const base=HISTORICO;
   const funcs=[...new Set(base.map(h=>h.func))].sort();
   const meses=[...new Set(base.map(h=>h.ds.slice(0,7)))].sort();
   let dados=base;
@@ -1545,18 +1543,34 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
+  // Faltas/Ausências e Atestados médicos costumavam ser 2 telas separadas, mas
+  // eram a mesma renderHistorico() com motivo="Atestado médico" fixo — os dados
+  // já vêm de um único campo categórico (motivo, 5 opções fixas no formulário
+  // de registro), então unifica numa tela só com o total por categoria.
+  const porCategoria={};
+  dados.forEach(r=>{porCategoria[r.motivo]=(porCategoria[r.motivo]||0)+1;});
+  const categoriasOrdenadas=Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]);
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <div class="rel-header">
-      <h3 style="margin-bottom:0">${motivoFixo?"🩺 "+motivoFixo:"📊 Histórico de Ausências"}</h3>
-      <button class="btn-xlsx" onclick="exportarAusenciasXlsx('${filtroFunc}','${filtroMes}',${argMotivo})" title="Exportar para Excel">📥 Excel</button>
+      <h3 style="margin-bottom:0">📊 Faltas e Atestados</h3>
+      <button class="btn-xlsx" onclick="exportarAusenciasXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
     </div>
     <div class="stat-row">
-      <div class="stat-card"><div class="stat-icon ${motivoFixo?"blue":"red"}">${motivoFixo?"🩺":"🚫"}</div><div class="stat-num">${dados.length}</div><div class="stat-label">${motivoFixo?"Atestados":"Registros"}</div></div>
+      <div class="stat-card"><div class="stat-icon red">🚫</div><div class="stat-num">${dados.length}</div><div class="stat-label">Registros</div></div>
       <div class="stat-card"><div class="stat-icon gold">👥</div><div class="stat-num">${funcionariosUnicos}</div><div class="stat-label">Funcionários</div></div>
-    </div>
+    </div>`;
+  if(categoriasOrdenadas.length>0){
+    h+=`<div class="fs-setor" style="margin-bottom:12px">
+      <div class="fs-setor-hd"><div class="fs-setor-left"><span style="font-size:20px">📋</span>
+        <div><div class="fs-setor-nm">Por categoria</div><div class="fs-setor-sub">${categoriasOrdenadas.length} categoria${categoriasOrdenadas.length!==1?"s":""}</div></div>
+      </div></div>
+      <div class="fs-setor-body">${categoriasOrdenadas.map(([m,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="font-weight:600">${m}</span><span style="font-weight:800;color:${m==="Atestado médico"?"var(--blue)":"var(--text2)"}">${c}</span></div>`).join("")}</div>
+    </div>`;
+  }
+  h+=`
     <div class="filter-row">
-      <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value,${argMotivo})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
-      <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value,${argMotivo})"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma ausência registrada.</div>`;}
   else{
@@ -1565,21 +1579,21 @@ function renderHistorico(filtroFunc,filtroMes,motivoFixo){
       h+=`<div class="sec-title" style="margin-bottom:8px">Períodos</div>${periodos.map(p=>`
         <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:8px 12px;margin-bottom:6px">
           <span style="font-size:13px;font-weight:700;color:var(--text)">${fmtData(p.ini)}${p.ini!==p.fim?" — "+fmtData(p.fim):""} <span style="font-weight:500;color:var(--text2)">· ${p.motivo}</span></span>
-          <button onclick="editarPeriodoAusenciaDoRelatorio('${filtroFunc}','${p.motivo}','${p.ini}','${filtroFunc}','${filtroMes}',${argMotivo})" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-weight:700;font-family:inherit">✏️ Editar período</button>
+          <button onclick="editarPeriodoAusenciaDoRelatorio('${filtroFunc}','${p.motivo}','${p.ini}','${filtroFunc}','${filtroMes}')" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-weight:700;font-family:inherit">✏️ Editar período</button>
         </div>`).join("")}
       <table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
     } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
-        <div class="fs-setor-hd" onclick="relResumoAberto=!relResumoAberto;renderHistorico('${filtroFunc}','${filtroMes}',${argMotivo})">
+        <div class="fs-setor-hd" onclick="relResumoAberto=!relResumoAberto;renderHistorico('${filtroFunc}','${filtroMes}')">
           <div class="fs-setor-left"><span style="font-size:20px">📊</span>
             <div><div class="fs-setor-nm">Resumo por funcionário</div>
             <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${relResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderHistorico('${n}','${filtroMes}',${argMotivo})"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
+        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderHistorico('${n}','${filtroMes}')"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
     const txt=gerarTextoWA(dados,filtroFunc,filtroMes);
@@ -1607,20 +1621,23 @@ _Total: ${dados.length} registro${dados.length!==1?"s":""}_`;
 }
 function copiarWA(){const el=document.getElementById("wa-text");if(!el)return;el.select();try{document.execCommand("copy");showToast("✅ Copiado! Cole no WhatsApp");}catch(e){navigator.clipboard?.writeText(el.value).then(()=>showToast("✅ Copiado!")).catch(()=>showToast("Copie o texto manualmente"));}}
 // Recalcula os mesmos dados filtrados que renderHistorico já mostra na tela
-// (mesmo filtroFunc/filtroMes/motivoFixo) e exporta em .xlsx — cobre Ausências
-// e Atestados médicos, que reaproveitam essa mesma função de render.
-function exportarAusenciasXlsx(filtroFunc,filtroMes,motivoFixo){
-  const base=motivoFixo?HISTORICO.filter(h=>h.motivo===motivoFixo):HISTORICO;
-  let dados=base;
+// (mesmo filtroFunc/filtroMes) e exporta em .xlsx — resumo com total geral +
+// total por categoria (motivo), igual ao bloco "Por categoria" da tela.
+function exportarAusenciasXlsx(filtroFunc,filtroMes){
+  let dados=HISTORICO;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
   if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
-  const resumo=[[motivoFixo?"Total de atestados":"Total de faltas/ausências",dados.length]];
+  const porCategoria={};
+  dados.forEach(r=>{porCategoria[r.motivo]=(porCategoria[r.motivo]||0)+1;});
+  const resumo=[
+    ["Total de faltas/ausências",dados.length],
+    ...Object.entries(porCategoria).sort((a,b)=>b[1]-a[1]),
+  ];
   const linhas=dados.map(r=>[fmtData(r.ds),r.func,r.setor,r.motivo]);
-  const nomeBase=motivoFixo?"atestados":"faltas-ausencias";
   const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
   const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
-  exportarPlanilha(`${nomeBase}${sufixoFunc}_${periodo}.xlsx`,motivoFixo||"Ausências",resumo,["Data","Funcionário","Setor","Motivo"],linhas);
+  exportarPlanilha(`faltas-atestados${sufixoFunc}_${periodo}.xlsx`,"Faltas e Atestados",resumo,["Data","Funcionário","Setor","Motivo"],linhas);
 }
 
 // FOLGAS
@@ -1928,8 +1945,7 @@ const MENU_SECOES=[
     {chave:"acessos",label:"Acessos",emoji:"🔑",fn:"abrirConfigAcessos()",cls:"edit-only"},
   ]},
   {titulo:"Relatórios",itens:[
-    {chave:"ausencias",label:"Faltas/Ausências",emoji:"📊",fn:"openHistorico()"},
-    {chave:"atestados",label:"Atestados médicos",emoji:"🩺",fn:"openRelatorioAtestados()"},
+    {chave:"faltas-atestados",label:"Faltas e Atestados",emoji:"📊",fn:"openHistorico()"},
     {chave:"folgas-vendidas",label:"Vendas de folga de domingo",emoji:"💰",fn:"openRelatorioFolgasVendidas()"},
     {chave:"folgas-vendidas-semana",label:"Vendas de folga em dias de semana",emoji:"💵",fn:"openRelatorioFolgasVendidasSemana()"},
     {chave:"extras",label:"Extras",emoji:"⭐",fn:"openRelatorioExtras()"},
