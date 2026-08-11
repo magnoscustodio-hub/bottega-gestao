@@ -375,6 +375,7 @@ let USER_ID=null;
 let NIVEL_ACESSO="master";
 let FUNC_ID_POR_NOME={};
 let CARGO_POR_NOME={};
+let DATA_INICIO_POR_NOME={};
 let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
 let FJ=[];
 let FOLGAS={};
@@ -569,7 +570,19 @@ function eFolga(n,d,mi){
   if((FOLGAS_VENDIDAS[`${mi}_${d}`]||[]).includes(n))return false;
   return(FOLGAS[mi]&&FOLGAS[mi][n])?FOLGAS[mi][n].includes(d):false;
 }
-function gDisp(d,mi,k){return EQ[k].m.filter(g=>!eFolga(g,d,mi));}
+// Sem data de início cadastrada = disponível desde sempre (comportamento de
+// sempre, intocado pra quem já está cadastrado). Com data, só a partir dela.
+function jaComecou(n,d,mi){
+  const inicio=DATA_INICIO_POR_NOME[n];
+  if(!inicio)return true;
+  return ds2s(mi,d)>=inicio;
+}
+// Disponibilidade real pra alocação num dia: não pode estar de folga/ausente/
+// férias (eFolga) E já precisa ter começado (jaComecou). Reúne as duas
+// checagens que hoje todo lugar que decide "quem pode ser escalado" precisa
+// fazer — eFolga continua com seu significado original, só de folga mesmo.
+function disponivelParaEscala(n,d,mi){return !eFolga(n,d,mi)&&jaComecou(n,d,mi);}
+function gDisp(d,mi,k){return EQ[k].m.filter(g=>disponivelParaEscala(g,d,mi));}
 function calcPax(mi,d,tu){
   const dn=dnom(mi,d),ds=ds2s(mi,d),fer=nFer(ds);
   if(FJ.includes(dn)&&tu==="j")return 0;
@@ -583,6 +596,7 @@ function tFolgas(d,mi){
   const vendidas=FOLGAS_VENDIDAS[`${mi}_${d}`]||[];
   Object.keys(EQ).forEach(k=>{
     const emF=EQ[k].m.filter(g=>{
+      if(!jaComecou(g,d,mi))return false;
       if(ausentes.includes(g))return false;
       if((FERIAS[mi]||[]).includes(g))return false;
       if(vendidas.includes(g))return false;
@@ -835,7 +849,7 @@ function openEditarEscala(d,mi,focoInicial){
   if(escManual){
     distAtual=JSON.parse(JSON.stringify(escManual));
   } else {
-    const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+    const dg=EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
     distAtual=distribuicaoAutomatica(dg);
   }
   window._pracaEditSel=focoInicial||null;
@@ -847,7 +861,7 @@ function getTodosDisponiveis(d,mi){
   const todos=[];
   Object.keys(EQ).forEach(k=>{
     EQ[k].m.forEach(g=>{
-      if(!eFolga(g,d,mi)) todos.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
+      if(disponivelParaEscala(g,d,mi)) todos.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
     });
   });
   return todos;
@@ -861,7 +875,7 @@ function renderModalEscala(d,mi,dist){
   const todosDisp=[];
   Object.keys(EQ).forEach(k=>{
     EQ[k].m.forEach(g=>{
-      if(!eFolga(g,d,mi)) todosDisp.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
+      if(disponivelParaEscala(g,d,mi)) todosDisp.push({nome:g,setor:EQ[k].l,cor:EQ[k].c});
     });
   });
 
@@ -895,7 +909,7 @@ function renderModalEscala(d,mi,dist){
       ${isAberta?`<div style="border-top:1px solid var(--border);padding-top:8px">
         ${Object.keys(EQ).map(k=>{
           const eq=EQ[k];
-          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!(dist[p.id]||[]).includes(g));
+          const dispSet=eq.m.filter(g=>disponivelParaEscala(g,d,mi)&&!(dist[p.id]||[]).includes(g));
           if(!dispSet.length) return "";
           return `<div style="margin-bottom:6px">
             <div style="font-size:10px;font-weight:700;color:${eq.c};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${eq.l}</div>
@@ -916,7 +930,7 @@ function renderModalEscala(d,mi,dist){
     // movido, mas está lá por padrão) com quem foi manualmente colocado ali —
     // senão o card aparece vazio no topo pra quem nunca foi mexido.
     const manualAqui=dist[sk]||[];
-    const nativosAqui=eqSup.m.filter(g=>!eFolga(g,d,mi)&&!alocados.has(g));
+    const nativosAqui=eqSup.m.filter(g=>disponivelParaEscala(g,d,mi)&&!alocados.has(g));
     const jaAlocadoAqui=[...new Set([...nativosAqui,...manualAqui])];
     h+=`<div id="escsel-${sk}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -934,7 +948,7 @@ function renderModalEscala(d,mi,dist){
       ${isAberta?`<div style="border-top:1px solid var(--border);padding-top:8px">
         ${Object.keys(EQ).map(k=>{
           const eq=EQ[k];
-          const dispSet=eq.m.filter(g=>!eFolga(g,d,mi)&&!jaAlocadoAqui.includes(g));
+          const dispSet=eq.m.filter(g=>disponivelParaEscala(g,d,mi)&&!jaAlocadoAqui.includes(g));
           if(!dispSet.length) return "";
           return `<div style="margin-bottom:6px">
             <div style="font-size:10px;font-weight:700;color:${eq.c};text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${eq.l}</div>
@@ -956,7 +970,7 @@ function renderModalEscala(d,mi,dist){
 
 let _distTemp={};
 function getDistBase(d,mi){
-  const dg=EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+  const dg=EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
   return distribuicaoAutomatica(dg);
 }
 function removerDaPraca(pid,nome,d,mi,tu=gt()){
@@ -1055,7 +1069,7 @@ function renderEsc(d,mi){
   const oc=Math.min(1,pax/CAA),ocp=Math.round(oc*100);
   const stC=ocp>=85?"dn":ocp>=60?"wn":"ok";
   const stL=ocp>=85?"🔥 Alta demanda":ocp>=60?"📈 Mov. médio":"✅ Mov. baixo";
-  const dg=fchJ?[]:EQ.garcons.m.filter(g=>!eFolga(g,d,mi));
+  const dg=fchJ?[]:EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
   const folgasHoje=tFolgas(d,mi);
   const totalF=Object.values(folgasHoje).reduce((s,v)=>s+v.length,0);
   const ausencias=AUSENCIAS[`${mi}_${d}`]||[];
@@ -1140,6 +1154,7 @@ function renderEsc(d,mi){
   const folgasVendidas=getFolgasVendidas(d,mi);
   // funcionários de folga nesse dia que podem vender
   const todosDeFolga=Object.keys(EQ).flatMap(k=>EQ[k].m.filter(g=>{
+    if(!jaComecou(g,d,mi))return false;
     if((FERIAS[mi]||[]).includes(g))return false;
     if((AUSENCIAS[`${mi}_${d}`]||[]).includes(g))return false;
     return(FOLGAS[mi]&&FOLGAS[mi][g])?FOLGAS[mi][g].includes(d):false;
@@ -2016,6 +2031,9 @@ function renderConfigFuncionarios(){
     <select id="nf-setor" class="msel">${Object.keys(EQ).map(k=>`<option value="${k}">${EQ[k].l}</option>`).join("")}</select>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Praça preferencial (opcional)</label>
     <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}">${p.n}</option>`).join("")}</select>
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Data de início (opcional)</label>
+    <input id="nf-data-inicio" type="date" class="msel" style="margin-bottom:12px">
+    <p class="msub" style="margin-top:-6px">Em branco, fica disponível pra escala desde já. Preenchida, só aparece como opção a partir dessa data.</p>
     <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarFuncionario()">+ Adicionar</button>
   </div>
   <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
@@ -2027,11 +2045,12 @@ async function adicionarFuncionario(){
   const cargo=document.getElementById("nf-cargo").value.trim();
   const setorChave=document.getElementById("nf-setor").value;
   const pracaId=document.getElementById("nf-praca").value;
+  const dataInicio=document.getElementById("nf-data-inicio").value;
   if(!nome){avisoErro("Informe o nome do funcionário.");return;}
   const setorId=EQ[setorChave]&&EQ[setorChave].id;
   if(!setorId){avisoErro("Setor inválido.");return;}
   const{error}=await supabaseClient.from("funcionarios").insert({
-    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,
+    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,
   });
   if(error){avisoErro("Não foi possível adicionar "+nome+".");return;}
   showToast("✅ "+nome+" adicionado(a)!");
@@ -3203,11 +3222,11 @@ async function removerMenuEvento(id){
 async function carregarEquipeEPracas(){
   const{data:setoresRows}=await supabaseClient
     .from("setores")
-    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id)")
+    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio)")
     .eq("restaurante_id",RESTAURANTE_ID)
     .order("ordem");
 
-  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};
+  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};DATA_INICIO_POR_NOME={};
   const pracaPreferidaPorFuncionario={};
   (setoresRows||[]).forEach(s=>{
     EQ[s.chave]={id:s.id,l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,m:[]};
@@ -3215,6 +3234,7 @@ async function carregarEquipeEPracas(){
       EQ[s.chave].m.push(f.nome);
       FUNC_ID_POR_NOME[f.nome]=f.id;
       if(f.cargo)CARGO_POR_NOME[f.nome]=f.cargo;
+      if(f.data_inicio)DATA_INICIO_POR_NOME[f.nome]=f.data_inicio;
       if(f.praca_preferencial_id){
         if(!pracaPreferidaPorFuncionario[f.praca_preferencial_id])pracaPreferidaPorFuncionario[f.praca_preferencial_id]=[];
         pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);

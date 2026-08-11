@@ -202,6 +202,11 @@ alter table public.funcionarios
   add column if not exists setor_id uuid references public.setores (id) on delete set null,
   add column if not exists praca_preferencial_id uuid references public.pracas (id) on delete set null;
 
+-- Data de início (opcional): em branco = disponível pra alocação desde
+-- sempre; preenchida = só aparece como disponível a partir dessa data.
+alter table public.funcionarios
+  add column if not exists data_inicio date;
+
 create table if not exists public.pax_esperado (
   id uuid primary key default gen_random_uuid(),
   restaurante_id uuid not null references public.restaurantes (id) on delete cascade,
