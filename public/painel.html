@@ -1140,14 +1140,18 @@ function renderEsc(d,mi){
       <span style="font-size:13px;font-weight:700;color:var(--text)">Ausências inesperadas</span>
       <button class="btn-ausencia" onclick="openAusencia(${d},${mi})">⚠️ Registrar</button>
     </div>
-    ${ausencias.map(n=>`
+    ${ausencias.map(n=>{
+      const reg=HISTORICO.find(h=>h.func===n&&h.ds===ds);
+      const motivoTxt=reg&&reg.motivo?` - ${reg.motivo}`:"";
+      return `
       <div class="aus-item">
-        <span class="aus-item-nome">${n}</span>
+        <span class="aus-item-nome">${n}${motivoTxt}</span>
         <div class="aus-item-acts">
           <button class="aus-btn-edit" onclick="editarAusencia('${n}',${d},${mi})">✏️ Editar</button>
           <button class="aus-btn-rem" onclick="remAusencia('${n}',${d},${mi})">×</button>
         </div>
-      </div>`).join("")}
+      </div>`;
+    }).join("")}
   </div>`;
 
   // FOLGAS VENDIDAS
