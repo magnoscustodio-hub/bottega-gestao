@@ -444,6 +444,10 @@ create table if not exists public.extras (
   -- valor fixo por pessoa (a mesma pessoa pode custar diferente em dias
   -- diferentes). Usado no relatório "Extras" (quantidade/custo por semana).
   valor numeric(10,2),
+  -- Função exercida naquele extra específico (Garçom, Barman, Maitre...) —
+  -- mesmo raciocínio do valor: opcional, varia por registro, não é fixo
+  -- por pessoa. Lista de opções fixa, resolvida só na UI.
+  funcao text,
   created_at timestamptz not null default now()
 );
 
