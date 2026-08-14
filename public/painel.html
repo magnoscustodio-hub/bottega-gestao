@@ -2796,10 +2796,29 @@ async function openAgendaNovo(){
   agEditId=null;agTipo="tarefa";
   renderAgendaForm({data:agHoje(),hora:"",titulo:"",tipo:"tarefa",prioridade:"normal",recorrencia:"nunca",visibilidade:"compartilhado"});
 }
+// Primeiro item datado (não permanente), hoje ou futuro, ainda não concluído —
+// pra onde a Agenda deve abrir já rolada na aba "Todos" (que mistura passado
+// e futuro na mesma lista). Itens permanentes ("Sempre") já flutuam pro topo
+// sozinhos na ordenação, então não entram nessa busca.
+function agPrimeiroPendenteId(lista){
+  const hoje=agHoje();
+  const alvo=lista.find(c=>c.data&&c.data>=hoje&&!c.concluido);
+  return alvo?alvo.id:null;
+}
+function agRolarParaPrimeiroPendente(){
+  const lista=agGetFiltrados();
+  const alvoId=agPrimeiroPendenteId(lista);
+  if(!alvoId)return;
+  setTimeout(()=>{
+    const el=document.getElementById("ag-item-"+alvoId);
+    if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+  },80);
+}
 async function openAgenda(){
   await carregarAgenda();
   agFiltro="todos";agEditId=null;
   renderAgendaModal();
+  agRolarParaPrimeiroPendente();
 }
 async function openAgendaSemana(){
   await carregarAgenda();
@@ -2834,7 +2853,7 @@ function renderAgendaModal(){
         const isPrimeiro=c._primeiroDoGrupo;
         const totalGrupo=isRecor?AGENDA.filter(x=>x.grupoId===c.grupoId&&x.data>=agHoje()&&!x.concluido).length:0;
         const isEventoModal=c.tipo==="evento";
-        itens+=`<div style="background:var(--surface);border-radius:var(--r);border:1.5px solid var(--border);padding:14px;margin-bottom:10px;opacity:${c.concluido?.55:1};box-shadow:var(--shadow)">
+        itens+=`<div id="ag-item-${c.id}" style="background:var(--surface);border-radius:var(--r);border:1.5px solid var(--border);padding:14px;margin-bottom:10px;opacity:${c.concluido?.55:1};box-shadow:var(--shadow)">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:${c.desc&&!c.concluido?"8px":"0"}">
             <div style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0">
               <div style="width:36px;height:36px;border-radius:50%;background:${t.cor}18;color:${t.cor};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${t.emoji}</div>
