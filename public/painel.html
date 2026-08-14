@@ -2829,6 +2829,7 @@ async function abrirEventos(){
   await carregarAgenda();
   agFiltro="evento";agEditId=null;
   renderAgendaModal();
+  agRolarParaPrimeiroPendente();
 }
 
 function renderAgendaModal(){
