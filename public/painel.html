@@ -190,11 +190,17 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 /* EXTRA */
 .extra-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:20px;padding:3px 9px;margin:2px;color:var(--red);font-weight:700}
 .extra-chip button{background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;line-height:1;padding:0;margin-left:2px}
-.extra-input-wrap{display:inline-flex;align-items:center;gap:4px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:20px;padding:3px 10px;margin:2px}
-.extra-input-wrap input{border:none;background:transparent;font-size:12px;color:var(--red);font-family:inherit;width:85px;font-weight:600}
-.extra-input-wrap input:focus{outline:none}
+/* Duas linhas (nome em cima; função + valor + botão embaixo) em vez de uma
+   pill só — com nome+função+valor+botão espremidos numa linha só, "Função"
+   cortava nos cards mais estreitos do .cgrid (minmax(130px,1fr)). */
+.extra-input-wrap{display:flex;flex-direction:column;gap:4px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:var(--rs);padding:6px 8px;margin:2px 0;width:100%}
+.extra-input-wrap input,.extra-input-wrap select{border:none;background:transparent;font-size:12px;color:var(--red);font-family:inherit;font-weight:600;width:100%}
+.extra-input-wrap select{font-size:11px}
+.extra-input-wrap input:focus,.extra-input-wrap select:focus{outline:none}
 .extra-input-wrap input::placeholder{color:var(--red-br);font-weight:400}
-.extra-input-wrap button{background:none;border:none;cursor:pointer;color:var(--red);font-size:18px;font-weight:800;padding:0}
+.extra-input-wrap .eiw-linha3{display:flex;align-items:center;gap:4px}
+.extra-input-wrap .eiw-linha3 input{width:auto;flex:1;min-width:0}
+.extra-input-wrap button{background:none;border:none;cursor:pointer;color:var(--red);font-size:18px;font-weight:800;padding:0;flex-shrink:0}
 
 /* BOTÃO AUSÊNCIA */
 .btn-ausencia{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--yellow);border:1.5px solid var(--yellow-br);border-radius:20px;padding:5px 12px;cursor:pointer;background:var(--yellow-bg);font-family:inherit;font-weight:700;box-shadow:var(--shadow);transition:all .15s}
@@ -739,9 +745,11 @@ function inputWrapExtraHtml(alvo,d,mi){
   const submeter=`addExtra('${alvo}',${d},${mi},document.getElementById('${idn}').value.trim(),document.getElementById('${idv}').value,document.getElementById('${idf}').value);renderEsc(${d},${mi});`;
   return `<div class="extra-input-wrap edit-only">
     <input type="text" placeholder="+ extra..." id="${idn}" onkeydown="if(event.key==='Enter'){${submeter}}">
-    <select id="${idf}" style="border:none;background:transparent;font-size:11px;color:var(--red);font-family:inherit;max-width:70px"><option value="">Função</option>${FUNCOES_EXTRA.map(f=>`<option value="${f.v}">${f.v}</option>`).join("")}</select>
-    <input type="number" step="0.01" min="0" placeholder="R$" id="${idv}" style="width:46px" onkeydown="if(event.key==='Enter'){${submeter}}">
-    <button onclick="${submeter}">+</button>
+    <select id="${idf}"><option value="">Função</option>${FUNCOES_EXTRA.map(f=>`<option value="${f.v}">${f.v}</option>`).join("")}</select>
+    <div class="eiw-linha3">
+      <input type="number" step="0.01" min="0" placeholder="R$" id="${idv}" onkeydown="if(event.key==='Enter'){${submeter}}">
+      <button onclick="${submeter}">+</button>
+    </div>
   </div>`;
 }
 
