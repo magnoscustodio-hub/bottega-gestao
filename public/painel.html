@@ -2017,6 +2017,7 @@ const MENU_SECOES=[
   ]},
   {titulo:"Configurações",itens:[
     {chave:"funcionarios",label:"Funcionários",emoji:"👥",fn:"abrirConfigFuncionarios()"},
+    {chave:"dias-funcionamento",label:"Dias de funcionamento",emoji:"🔒",fn:"abrirConfigDiasFuncionamento()"},
     {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
     {chave:"acessos",label:"Acessos",emoji:"🔑",fn:"abrirConfigAcessos()",cls:"edit-only"},
   ]},
@@ -2120,6 +2121,92 @@ async function removerFuncionario(nome,funcionarioId){
   await carregarEquipeEPracas();
   if(dSel)renderEsc(dSel,gm());
   renderConfigFuncionarios();
+}
+
+// --- Dias de funcionamento (editável a qualquer momento — mesma interface
+// do Passo 1 do onboarding, gravando na mesma tabela dias_fechados; antes
+// disso só existia a configuração inicial do onboarding, sem forma de mudar
+// depois) ---
+const DIAS_FUNC_INFO=[
+  {k:'Segunda',n:'Segunda-feira',e:'📅'},
+  {k:'Terça',n:'Terça-feira',e:'📅'},
+  {k:'Quarta',n:'Quarta-feira',e:'📅'},
+  {k:'Quinta',n:'Quinta-feira',e:'📅'},
+  {k:'Sexta',n:'Sexta-feira',e:'🍻'},
+  {k:'Sábado',n:'Sábado',e:'⭐'},
+  {k:'Domingo',n:'Domingo',e:'🌅'},
+];
+async function abrirConfigDiasFuncionamento(){
+  const{data}=await supabaseClient.from("dias_fechados").select("*").eq("restaurante_id",RESTAURANTE_ID);
+  window._diasFechadosRows=data||[];
+  renderConfigDiasFuncionamento();
+}
+function renderConfigDiasFuncionamento(){
+  const rows=window._diasFechadosRows||[];
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>🔒 Dias de funcionamento</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
+    <p class="msub">Marque os dias em que o restaurante <strong>não</strong> funciona.</p>`;
+  DIAS_FUNC_INFO.forEach(d=>{
+    const row=rows.find(r=>r.dia_semana===d.k);
+    const fechado=!!row;
+    const turno=row?row.turno:"todos";
+    h+=`<div style="background:var(--surface);border:1.5px solid ${fechado?"var(--red-br)":"var(--border)"};border-radius:var(--rs);margin-bottom:8px;overflow:hidden;box-shadow:var(--shadow)">
+      <div class="master-only" onclick="toggleDiaFechadoConfig('${d.k}')" style="display:flex;align-items:center;justify-content:space-between;padding:13px 16px;cursor:pointer;-webkit-tap-highlight-color:transparent">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">${d.e}</span>
+          <span style="font-size:15px;font-weight:600;color:${fechado?"var(--red)":"var(--text)"}">${d.n}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${fechado?`<span style="font-size:11px;font-weight:700;color:var(--red);background:var(--red-bg);border-radius:20px;padding:2px 10px">Fechado</span>`:`<span style="font-size:11px;color:var(--text3)">Aberto</span>`}
+          <div style="width:22px;height:22px;border-radius:50%;border:1.5px solid ${fechado?"var(--red)":"var(--border)"};background:${fechado?"var(--red)":"transparent"};display:flex;align-items:center;justify-content:center;color:white;font-size:13px">${fechado?"✓":""}</div>
+        </div>
+      </div>
+      ${fechado?`<div class="master-only" style="border-top:1px solid var(--red-br);background:var(--red-bg);padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--red);font-weight:600;align-self:center">Fecha:</span>
+        ${[["todos","Dia todo"],["almoco","Só almoço"],["jantar","Só jantar"]].map(([v,l])=>`
+          <button onclick="setTurnoFechadoConfig('${d.k}','${v}')" style="padding:5px 12px;border-radius:20px;border:1.5px solid ${turno===v?"var(--red)":"var(--red-br)"};background:${turno===v?"var(--red)":"transparent"};color:${turno===v?"white":"var(--red)"};font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">${turno===v?"✓ ":""}${l}</button>
+        `).join("")}
+      </div>`:""}
+    </div>`;
+  });
+  h+=`<p style="font-size:12px;color:var(--text3);text-align:center;margin:8px 0 0">Não selecionado = aberto nesse dia</p>
+  <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function toggleDiaFechadoConfig(dia){
+  const rows=window._diasFechadosRows||[];
+  const nomeDia=(DIAS_FUNC_INFO.find(d=>d.k===dia)||{}).n||dia;
+  const idx=rows.findIndex(r=>r.dia_semana===dia);
+  if(idx>=0){
+    const row=rows[idx];
+    const{error}=await supabaseClient.from("dias_fechados").delete().eq("id",row.id);
+    if(error){avisoErro("Não foi possível reabrir "+nomeDia+".");return;}
+    rows.splice(idx,1);
+    delete FJ[dia];
+    showToast("✅ "+nomeDia+" reaberto(a).");
+  } else {
+    const{data,error}=await supabaseClient.from("dias_fechados")
+      .insert({restaurante_id:RESTAURANTE_ID,dia_semana:dia,turno:"todos"}).select().single();
+    if(error){avisoErro("Não foi possível fechar "+nomeDia+".");return;}
+    rows.push(data);
+    FJ[dia]="todos";
+    showToast("🔒 "+nomeDia+" marcado(a) como fechado(a).");
+  }
+  renderConfigDiasFuncionamento();
+  if(dSel)renderEsc(dSel,gm());
+}
+async function setTurnoFechadoConfig(dia,turno){
+  const rows=window._diasFechadosRows||[];
+  const row=rows.find(r=>r.dia_semana===dia);
+  if(!row)return;
+  const nomeDia=(DIAS_FUNC_INFO.find(d=>d.k===dia)||{}).n||dia;
+  const{error}=await supabaseClient.from("dias_fechados").update({turno}).eq("id",row.id);
+  if(error){avisoErro("Não foi possível atualizar o turno de "+nomeDia+".");return;}
+  row.turno=turno;
+  FJ[dia]=turno;
+  renderConfigDiasFuncionamento();
+  if(dSel)renderEsc(dSel,gm());
 }
 
 // --- Logo do restaurante ---
