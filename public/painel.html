@@ -383,7 +383,18 @@ let FUNC_ID_POR_NOME={};
 let CARGO_POR_NOME={};
 let DATA_INICIO_POR_NOME={};
 let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
-let FJ=[];
+// FJ: mapa dia_semana -> turno fechado ('todos'|'almoco'|'jantar'), vindo de
+// dias_fechados (configurado no onboarding, Passo 1 "Dias de funcionamento").
+let FJ={};
+// Fechado neste turno específico: 'todos' fecha os dois, 'almoco'/'jantar' só
+// o turno correspondente. Sem isso, um dia "Fechado - Dia todo" só fechava
+// quando tu==='j' (sobra de um design antigo que só considerava jantar) — o
+// Almoço do mesmo dia aparecia como se fosse um dia comum, sem fechar nada.
+function diaFechadoNesteTurno(dn,tu){
+  const t=FJ[dn];
+  if(!t)return false;
+  return t==="todos"||t===(tu==="a"?"almoco":"jantar");
+}
 let FOLGAS={};
 let FERIAS={};
 let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
@@ -591,7 +602,7 @@ function disponivelParaEscala(n,d,mi){return !eFolga(n,d,mi)&&jaComecou(n,d,mi);
 function gDisp(d,mi,k){return EQ[k].m.filter(g=>disponivelParaEscala(g,d,mi));}
 function calcPax(mi,d,tu){
   const dn=dnom(mi,d),ds=ds2s(mi,d),fer=nFer(ds);
-  if(FJ.includes(dn)&&tu==="j")return 0;
+  if(diaFechadoNesteTurno(dn,tu))return 0;
   if(fer)return CAA;
   const base=PAX[dn][tu],res=gRes(mi,d,tu);
   return Math.max(base,res>0?Math.round(base*0.7+res*1.1):base);
@@ -852,7 +863,17 @@ function distribuicaoAutomatica(dg){
   PD.forEach(p=>{dist[p.id]=[];});
   const al=new Set();
   PD.filter(p=>!p.fch).forEach(p=>{(p.gc||[]).forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
-  PD.filter(p=>!p.fch&&!p.fimSemana).forEach(p=>{dg.forEach(g=>{if(!al.has(g)){dist[p.id].push(g);al.add(g);}});});
+  // Restante (sem praça preferida): round-robin entre as praças elegíveis,
+  // pra não empilhar todo mundo na primeira praça da lista (bug antigo).
+  const pracasElegiveis=PD.filter(p=>!p.fch&&!p.fimSemana);
+  if(pracasElegiveis.length>0){
+    let i=0;
+    dg.forEach(g=>{
+      if(al.has(g))return;
+      const p=pracasElegiveis[i%pracasElegiveis.length];
+      dist[p.id].push(g);al.add(g);i++;
+    });
+  }
   return dist;
 }
 // Rola até a praça/setor sendo editado dentro do modal "Editar escala". Reaproveitada
@@ -1086,7 +1107,7 @@ function renderEmpty(){
 
 function renderEsc(d,mi){
   const dn=dnom(mi,d),tu=gt(),ds=ds2s(mi,d),fer=nFer(ds);
-  const fchJ=FJ.includes(dn)&&tu==="j",isDom=dn==="Domingo";
+  const fchJ=diaFechadoNesteTurno(dn,tu),isDom=dn==="Domingo";
   const res=gRes(mi,d,tu);
   const pax=fchJ?0:fer?CAA:calcPax(mi,d,tu);
   const acima=!fer&&res>0&&pax>(PAX[dn]?.[tu]||0);
@@ -3555,7 +3576,7 @@ async function boot(){
 
   const{data:fechadosRows}=await supabaseClient
     .from("dias_fechados").select("*").eq("restaurante_id",RESTAURANTE_ID);
-  FJ=(fechadosRows||[]).filter(r=>r.turno==="jantar"||r.turno==="todos").map(r=>r.dia_semana);
+  FJ={};(fechadosRows||[]).forEach(r=>{FJ[r.dia_semana]=r.turno;});
 
   await carregarHistorico();
   await carregarHistoricoFolgasVendidas();

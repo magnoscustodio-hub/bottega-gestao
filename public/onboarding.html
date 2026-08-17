@@ -108,6 +108,7 @@ input::placeholder{color:var(--text3)}
 .cal-d.dom{color:#B02020}
 .cal-d.sab{color:#B5893A}
 .cal-d.emp{opacity:0;pointer-events:none}
+.cal-d.fechado{opacity:.35;cursor:default;pointer-events:none;text-decoration:line-through}
 .cal-resumo{border-radius:var(--rs);padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px}
 .cal-resumo.has{background:var(--suc-bg);color:var(--success)}
 .cal-resumo.empty{background:var(--surface2);color:var(--text3);font-weight:400}
@@ -523,6 +524,9 @@ const DIAS_SEMANA_NOMES=[
   {k:'Domingo',n:'Domingo',e:'🌅'},
 ];
 function getDiaFechado(k){return D.diasFechado.find(x=>x.dia===k)||null;}
+// Date.getDay(): 0=Domingo...6=Sábado. Usado pra achar o nome do dia (k) de
+// uma data do calendário do Passo 5, e checar se cai num dia já fechado.
+const DOW_K=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
 function renderDiasFechado(){
   let h='';
@@ -696,6 +700,14 @@ function renderCalModal(){
     const dt=new Date(calAno,calMes,d),dow=dt.getDay();
     const ds=`${calAno}-${String(calMes+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     const sel=folgas.includes(ds);
+    const fch=getDiaFechado(DOW_K[dow]);
+    // Dia já fechado (restaurante não abre): não faz sentido marcar folga
+    // individual nele, então nem deixa clicar — evita a confusão original
+    // de configurar folga num dia que já não tem operação nenhuma.
+    if(fch&&fch.turno==='todos'){
+      h+=`<div class="cal-d fechado" title="Fechado">${d}</div>`;
+      continue;
+    }
     const cls='cal-d'+(sel?' sel':dow===0?' dom':dow===6?' sab':'');
     h+=`<div class="${cls}" onclick="togFolga('${ds}')">${d}</div>`;
   }
