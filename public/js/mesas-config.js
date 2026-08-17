@@ -53,7 +53,8 @@ function mcAtualizar(chave, i, campo, valor) {
 
 function mcHtml(chave, linhas) {
   const t = mcTotais(linhas);
-  let h = `<div style="margin-bottom:8px">`;
+  let h = `<div style="font-size:12px;color:var(--text2,#6B5F52);margin-bottom:8px">Adicione aqui a quantidade de mesas e lugares dessa praça — pode ter mais de uma linha se os tamanhos variarem.</div>`;
+  h += `<div style="margin-bottom:8px">`;
   (linhas || []).forEach((l, i) => {
     h += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
       <input type="number" min="0" inputmode="numeric" placeholder="Qtd." value="${l.qtd || ""}" oninput="mcAtualizar('${chave}',${i},'qtd',this.value)" style="width:64px;font-size:13px;padding:8px;border-radius:8px;border:1.5px solid var(--border-s,#D4CBC0);background:var(--surface2,#F7F4F0);color:inherit;font-family:inherit;-webkit-appearance:none">

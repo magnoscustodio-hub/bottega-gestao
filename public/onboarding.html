@@ -399,14 +399,24 @@ function goTo(n){
   if(n===14) renderResumo();
 }
 
+// Remove espaços comuns + caracteres invisíveis que .trim() não pega (zero-width
+// space/joiner, BOM, soft hyphen) — comuns em e-mail colado de outro app (teclado
+// preditivo, notas, etc.) e que fazem o Supabase rejeitar um e-mail que "parece"
+// perfeitamente válido a olho nu ("Unable to validate email address: invalid format").
+function limparEmail(v){
+  return (v||'').replace(new RegExp('[\\u200B-\\u200D\\uFEFF\\u00AD]','g'),'').trim();
+}
+const EMAIL_REGEX=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function saveRestaurante(){
   D.nome=document.getElementById('inp-nome').value.trim();
   D.cidade=document.getElementById('inp-cidade').value.trim();
-  D.donoEmail=document.getElementById('inp-email').value.trim();
+  D.donoEmail=limparEmail(document.getElementById('inp-email').value);
   D.donoSenha=document.getElementById('inp-senha').value;
 
   if(!D.nome){ alert('Digite o nome do restaurante.'); return; }
   if(!D.donoEmail){ alert('Digite seu e-mail.'); return; }
+  if(!EMAIL_REGEX.test(D.donoEmail)){ alert('Esse e-mail não parece válido. Confira se não tem espaço ou caractere estranho no meio — se colou de outro lugar, tente digitar direto no campo.'); return; }
   if(D.donoSenha.length<6){ alert('A senha precisa ter pelo menos 6 caracteres.'); return; }
 
   goTo(2);
@@ -753,6 +763,9 @@ async function finalizarCadastro(){
   btn.textContent='Salvando...';
 
   try{
+    // Limpa de novo por segurança (defesa em profundidade — saveRestaurante já
+    // limpa e valida, mas é barato garantir que o que vai pro Supabase está limpo).
+    D.donoEmail=limparEmail(D.donoEmail);
     const {data:signUpData,error:signUpError}=await supabaseClient.auth.signUp({
       email:D.donoEmail,
       password:D.donoSenha,
@@ -855,7 +868,12 @@ async function finalizarCadastro(){
   }catch(err){
     btn.disabled=false;
     btn.textContent='Ver escala do mês →';
-    mostrarErroFinalizar(err.message||'Não foi possível concluir o cadastro. Tente novamente.');
+    let msg=err.message||'Não foi possível concluir o cadastro. Tente novamente.';
+    // Se o erro menciona e-mail, mostra a string exata que foi enviada — ajuda a
+    // flagrar caractere invisível/espaço que passou pela limpeza e não é visível
+    // a olho nu no campo (ver limparEmail acima).
+    if(/e-?mail/i.test(msg)) msg+=` (e-mail enviado: "${D.donoEmail}", ${D.donoEmail.length} caracteres)`;
+    mostrarErroFinalizar(msg);
   }
 }
 
