@@ -26,7 +26,11 @@ function LoginDono() {
       return
     }
 
-    window.location.href = 'painel.html'
+    // Caminho absoluto a partir da raiz do app — precisa ser assim porque
+    // esta página também vive na rota aninhada /login/:slug: um caminho
+    // relativo ('painel.html') resolveria contra o segmento do slug (ex:
+    // /login/bottega-bernacca -> /login/painel.html, quebrando o redirect).
+    window.location.href = `${import.meta.env.BASE_URL}painel.html`
   }
 
   return (
@@ -58,7 +62,10 @@ function LoginDono() {
       </button>
 
       <p className="auth-footer">
-        Não tem conta? <a href="onboarding.html">Cadastre seu restaurante</a>
+        {/* Absoluto pelo mesmo motivo do redirect pós-login: essa página
+            também vive em /login/:slug, onde um href relativo resolveria
+            errado (ex: /login/onboarding.html). */}
+        Não tem conta? <a href={`${import.meta.env.BASE_URL}onboarding.html`}>Cadastre seu restaurante</a>
       </p>
     </form>
   )
@@ -125,7 +132,11 @@ function LoginEquipe({ restauranteId }) {
       return
     }
 
-    window.location.href = 'painel.html'
+    // Caminho absoluto a partir da raiz do app — precisa ser assim porque
+    // esta página também vive na rota aninhada /login/:slug: um caminho
+    // relativo ('painel.html') resolveria contra o segmento do slug (ex:
+    // /login/bottega-bernacca -> /login/painel.html, quebrando o redirect).
+    window.location.href = `${import.meta.env.BASE_URL}painel.html`
   }
 
   return (
