@@ -8,6 +8,7 @@ create table if not exists public.restaurantes (
   endereco text,
   cidade text,
   logo_url text,
+  slug text unique,
   created_at timestamptz not null default now()
 );
 
@@ -1023,6 +1024,17 @@ left join public.funcionarios f on f.id = pa.funcionario_id
 where pa.email_login is not null; -- exclui o Master (usa e-mail/senha, não PIN)
 
 grant select on public.funcionarios_login_publico to anon, authenticated;
+
+-- Resolve slug -> restaurante (nome, logo, id) na tela de login, antes do
+-- funcionário se autenticar. Só devolve o restaurante cujo slug for pedido
+-- (busca por igualdade) — nunca expõe a lista completa de clientes.
+create or replace view public.restaurante_login_publico
+with (security_invoker = false) as
+select id, nome, logo_url, slug
+from public.restaurantes
+where slug is not null;
+
+grant select on public.restaurante_login_publico to anon, authenticated;
 
 -- ============================================================
 -- Bucket de Storage "logos" — logo do restaurante (public/painel.html

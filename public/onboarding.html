@@ -406,6 +406,18 @@ function goTo(n){
 function limparEmail(v){
   return (v||'').replace(new RegExp('[\\u200B-\\u200D\\uFEFF\\u00AD]','g'),'').trim();
 }
+
+// Slug único do restaurante — usado na URL de login da equipe (/login/:slug).
+// Sem acentos, minúsculo, só [a-z0-9-]; colisão é tratada com sufixo numérico
+// no ponto de inserção (ver finalizarCadastro), não aqui.
+function gerarSlug(nome){
+  return (nome||'')
+    .toLowerCase()
+    .normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]','g'),'')
+    .replace(/[^a-z0-9]+/g,'-')
+    .replace(/^-+|-+$/g,'')
+    .slice(0,60) || 'restaurante';
+}
 const EMAIL_REGEX=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function saveRestaurante(){
@@ -779,11 +791,23 @@ async function finalizarCadastro(){
 
     const ownerId=signUpData.user.id;
 
-    const {data:restaurante,error:restError}=await supabaseClient
-      .from('restaurantes')
-      .insert({owner_id:ownerId,nome:D.nome,cidade:D.cidade})
-      .select()
-      .single();
+    // Slug único usado pra escopar a tela de login da equipe (/login/:slug)
+    // por restaurante — sem isso a tela de login não tem como saber qual
+    // restaurante está sendo acessado. Tenta o slug "limpo" primeiro e,
+    // se já existir (23505 = unique_violation), acrescenta um sufixo.
+    const slugBase=gerarSlug(D.nome);
+    let restaurante=null,restError=null;
+    for(let tentativa=0;tentativa<5;tentativa++){
+      const slugTentativa=tentativa===0?slugBase:`${slugBase}-${tentativa+1}`;
+      const resp=await supabaseClient
+        .from('restaurantes')
+        .insert({owner_id:ownerId,nome:D.nome,cidade:D.cidade,slug:slugTentativa})
+        .select()
+        .single();
+      if(!resp.error){restaurante=resp.data;restError=null;break;}
+      restError=resp.error;
+      if(resp.error.code!=='23505')break; // erro diferente de slug duplicado: tentar de novo não resolve
+    }
     if(restError) throw restError;
     const restauranteId=restaurante.id;
 

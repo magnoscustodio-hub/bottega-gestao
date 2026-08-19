@@ -188,8 +188,15 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .rinp:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-bg)}
 
 /* EXTRA */
-.extra-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:20px;padding:3px 9px;margin:2px;color:var(--red);font-weight:700}
-.extra-chip button{background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;line-height:1;padding:0;margin-left:2px}
+/* max-width+box-sizing prendem o chip na largura do card; o texto (nome +
+   função + valor) quebra linha dentro do chip quando não cabe numa linha só
+   (min-width:0 é o que permite isso — sem ele o span de texto se recusa a
+   encolher). O botão × fica flex-shrink:0, sempre visível na borda direita,
+   nunca é empurrado pra fora — era esse o bug: chip virava mais largo que o
+   card e cortava o × no lado direito. */
+.extra-chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:12px;padding:3px 9px;margin:2px;color:var(--red);font-weight:700;max-width:100%;box-sizing:border-box}
+.extra-chip .ect-txt{white-space:normal;word-break:break-word;min-width:0}
+.extra-chip button{background:none;border:none;cursor:pointer;color:var(--red);font-size:14px;line-height:1;padding:0;margin-left:2px;flex-shrink:0}
 /* Duas linhas (nome em cima; função + valor + botão embaixo) em vez de uma
    pill só — com nome+função+valor+botão espremidos numa linha só, "Função"
    cortava nos cards mais estreitos do .cgrid (minmax(130px,1fr)). */
@@ -401,6 +408,7 @@ let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={}
 let HISTORICO_FOLGAS_VENDIDAS=[];
 let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
+let RESTAURANTE_SLUG=null;
 const _agora=new Date();
 let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
@@ -745,7 +753,7 @@ function chipsExtrasHtml(extras,alvo,d,mi){
   return extras.map(e=>{
     const valorTxt=fmtValorExtra(e.valor);
     const funcaoTxt=e.funcao?`<span style="opacity:.7;font-weight:500"> · ${funcaoELideranca(e.funcao)?ICONE_LIDERANCA_EXTRA+" ":""}${e.funcao}</span>`:"";
-    return `<span class="extra-chip">⭐${e.nome}${funcaoTxt}${valorTxt?` R$${valorTxt}`:""}<button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
+    return `<span class="extra-chip"><span class="ect-txt">⭐${e.nome}${funcaoTxt}${valorTxt?` R$${valorTxt}`:""}</span><button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
   }).join("");
 }
 // Campo "+ extra..." (nome + função opcional + valor opcional em R$). Enter em
@@ -2249,6 +2257,45 @@ async function enviarLogo(){
 // "gerenciar-acesso" (service_role, valida as regras no servidor de novo —
 // esta tela só reflete visualmente o que cada nível pode fazer).
 let ACESSOS=[];
+// Mesmo gerador de slug do onboarding (public/onboarding.html gerarSlug) —
+// duplicado aqui porque as duas páginas não compartilham bundler/import.
+function gerarSlug(nome){
+  return (nome||"")
+    .toLowerCase()
+    .normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]","g"),"")
+    .replace(/[^a-z0-9]+/g,"-")
+    .replace(/^-+|-+$/g,"")
+    .slice(0,60)||"restaurante";
+}
+function linkLoginEquipe(){
+  if(!RESTAURANTE_SLUG)return "";
+  const base=location.href.replace(/painel\.html.*$/,"");
+  return base+"login/"+RESTAURANTE_SLUG;
+}
+function copiarLinkLoginEquipe(){
+  const link=linkLoginEquipe();
+  if(!link)return;
+  navigator.clipboard.writeText(link).then(()=>{
+    showToast("✅ Link copiado!");
+  }).catch(()=>{
+    avisoErro("Não foi possível copiar. Selecione o link manualmente.");
+  });
+}
+async function gerarLinkLoginEquipe(){
+  const slugBase=gerarSlug(RESTAURANTE_NOME);
+  for(let tentativa=0;tentativa<5;tentativa++){
+    const slugTentativa=tentativa===0?slugBase:`${slugBase}-${tentativa+1}`;
+    const{error}=await supabaseClient.from("restaurantes").update({slug:slugTentativa}).eq("id",RESTAURANTE_ID);
+    if(!error){
+      RESTAURANTE_SLUG=slugTentativa;
+      renderConfigAcessos();
+      showToast("✅ Link de login gerado!");
+      return;
+    }
+    if(error.code!=="23505"){avisoErro("Não foi possível gerar o link.");return;}
+  }
+  avisoErro("Não foi possível gerar o link. Tente novamente.");
+}
 let acessoNovoFunc="",acessoNovoNivel="consulta";
 function abrirConfigAcessos(){
   acessoNovoFunc="";acessoNovoNivel="consulta";
@@ -2287,7 +2334,17 @@ function renderConfigAcessos(){
   const disponiveis=funcionariosSemAcesso();
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
     <div class="cal-modal-hd"><h3>🔑 Acessos</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
-    <p class="msub">Login individual por PIN para a liderança — Master, você já entra com seu e-mail/senha.</p>`;
+    <p class="msub">Login individual por PIN para a liderança — Master, você já entra com seu e-mail/senha.</p>
+    <div class="sec bg2" style="margin-bottom:14px">
+      <div class="sec-title" style="margin-bottom:6px">🔗 Link de login da equipe</div>
+      ${RESTAURANTE_SLUG?`
+        <div style="font-size:12px;color:var(--text2);word-break:break-all;margin-bottom:8px">${linkLoginEquipe()}</div>
+        <button style="width:100%;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="copiarLinkLoginEquipe()">📋 Copiar link</button>
+      `:`
+        <p class="msub" style="margin:0 0 8px">Gere um link pra compartilhar com sua equipe — é por ele que quem tem PIN entra, já direto na tela do restaurante certo.</p>
+        <button class="master-only" style="width:100%;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="gerarLinkLoginEquipe()">Gerar link</button>
+      `}
+    </div>`;
   if(ACESSOS.length===0){
     h+=`<div style="text-align:center;padding:20px 0;color:var(--text3);font-size:13px">Nenhum acesso criado ainda.</div>`;
   } else {
@@ -3655,6 +3712,7 @@ async function boot(){
   RESTAURANTE_ID=restaurante.id;
   RESTAURANTE_NOME=restaurante.nome;
   RESTAURANTE_LOGO_URL=restaurante.logo_url||null;
+  RESTAURANTE_SLUG=restaurante.slug||null;
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";

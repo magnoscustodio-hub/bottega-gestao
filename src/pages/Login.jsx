@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
+import RestauranteAvatar from '../components/RestauranteAvatar'
 
 function LoginDono() {
   const [email, setEmail] = useState('')
@@ -62,7 +64,10 @@ function LoginDono() {
   )
 }
 
-function LoginEquipe() {
+// restauranteId: obrigatório — sem ele não é seguro listar ninguém (traria
+// funcionários de todos os restaurantes cadastrados misturados na mesma
+// lista, um vazamento entre clientes diferentes).
+function LoginEquipe({ restauranteId }) {
   const [pessoas, setPessoas] = useState([])
   const [emailLogin, setEmailLogin] = useState('')
   const [pin, setPin] = useState('')
@@ -77,6 +82,7 @@ function LoginEquipe() {
       const { data, error: listaError } = await supabase
         .from('funcionarios_login_publico')
         .select('perfil_id, nome, email_login')
+        .eq('restaurante_id', restauranteId)
         .order('nome')
 
       if (!ativo) return
@@ -94,7 +100,7 @@ function LoginEquipe() {
     return () => {
       ativo = false
     }
-  }, [])
+  }, [restauranteId])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -165,32 +171,98 @@ function LoginEquipe() {
 }
 
 function Login() {
+  const { slug } = useParams()
   const [aba, setAba] = useState('dono')
+  const [restaurante, setRestaurante] = useState(null)
+  const [carregandoRestaurante, setCarregandoRestaurante] = useState(!!slug)
+  const [slugInvalido, setSlugInvalido] = useState(false)
+
+  useEffect(() => {
+    if (!slug) {
+      setRestaurante(null)
+      setCarregandoRestaurante(false)
+      setSlugInvalido(false)
+      return
+    }
+
+    let ativo = true
+    setCarregandoRestaurante(true)
+    setSlugInvalido(false)
+
+    async function carregarRestaurante() {
+      const { data, error } = await supabase
+        .from('restaurante_login_publico')
+        .select('id, nome, logo_url')
+        .eq('slug', slug)
+        .maybeSingle()
+
+      if (!ativo) return
+
+      if (error || !data) {
+        setRestaurante(null)
+        setSlugInvalido(true)
+      } else {
+        setRestaurante(data)
+        // Link é específico da equipe — não faz sentido abrir já na aba do dono.
+        setAba('equipe')
+      }
+      setCarregandoRestaurante(false)
+    }
+
+    carregarRestaurante()
+
+    return () => {
+      ativo = false
+    }
+  }, [slug])
 
   return (
     <main className="auth">
       <div className="auth-wrap">
+        {slug && restaurante && (
+          <div className="auth-restaurante">
+            <RestauranteAvatar nome={restaurante.nome} logoUrl={restaurante.logo_url} size={56} />
+            <span className="auth-restaurante-nome">{restaurante.nome}</span>
+          </div>
+        )}
+
         <h1>Entrar</h1>
         <p className="auth-subtitle">Acesse sua conta do GestãoSalão.</p>
 
-        <div className="auth-tabs">
-          <button
-            type="button"
-            className={aba === 'dono' ? 'auth-tab active' : 'auth-tab'}
-            onClick={() => setAba('dono')}
-          >
-            Sou dono/administrador
-          </button>
-          <button
-            type="button"
-            className={aba === 'equipe' ? 'auth-tab active' : 'auth-tab'}
-            onClick={() => setAba('equipe')}
-          >
-            Sou da equipe
-          </button>
-        </div>
+        {slug && slugInvalido && (
+          <p className="auth-error" style={{ marginBottom: 16 }}>
+            Link de login inválido. Confira o link com o gerente do restaurante.
+          </p>
+        )}
 
-        {aba === 'dono' ? <LoginDono /> : <LoginEquipe />}
+        {!carregandoRestaurante && (
+          <>
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={aba === 'dono' ? 'auth-tab active' : 'auth-tab'}
+                onClick={() => setAba('dono')}
+              >
+                Sou dono/administrador
+              </button>
+              {slug && restaurante && (
+                <button
+                  type="button"
+                  className={aba === 'equipe' ? 'auth-tab active' : 'auth-tab'}
+                  onClick={() => setAba('equipe')}
+                >
+                  Sou da equipe
+                </button>
+              )}
+            </div>
+
+            {aba === 'equipe' && slug && restaurante ? (
+              <LoginEquipe restauranteId={restaurante.id} />
+            ) : (
+              <LoginDono />
+            )}
+          </>
+        )}
       </div>
     </main>
   )
