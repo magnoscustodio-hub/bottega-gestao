@@ -2296,6 +2296,14 @@ async function gerarLinkLoginEquipe(){
   }
   avisoErro("Não foi possível gerar o link. Tente novamente.");
 }
+// Reaproveita gerarLinkLoginEquipe mesmo com um slug já existente — serve
+// tanto pra "trocar de propósito" quanto pra corrigir um valor incorreto
+// (ex: escrito errado direto no banco), já que hoje não existe outra forma
+// de regenerar pela interface uma vez que RESTAURANTE_SLUG deixa de ser nulo.
+async function confirmarGerarNovoLinkLoginEquipe(){
+  if(!window.confirm("Isso substitui o link de login da equipe atual. Se alguém já salvou o link antigo, ele deixa de funcionar — você vai precisar compartilhar o novo. Continuar?"))return;
+  await gerarLinkLoginEquipe();
+}
 let acessoNovoFunc="",acessoNovoNivel="consulta";
 function abrirConfigAcessos(){
   acessoNovoFunc="";acessoNovoNivel="consulta";
@@ -2339,7 +2347,10 @@ function renderConfigAcessos(){
       <div class="sec-title" style="margin-bottom:6px">🔗 Link de login da equipe</div>
       ${RESTAURANTE_SLUG?`
         <div style="font-size:12px;color:var(--text2);word-break:break-all;margin-bottom:8px">${linkLoginEquipe()}</div>
-        <button style="width:100%;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="copiarLinkLoginEquipe()">📋 Copiar link</button>
+        <div style="display:flex;gap:8px">
+          <button style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="copiarLinkLoginEquipe()">📋 Copiar link</button>
+          <button class="master-only" style="flex:1;padding:8px;border-radius:var(--rs);border:1.5px solid var(--border-s,#D4CBC0);background:transparent;color:var(--text2);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="confirmarGerarNovoLinkLoginEquipe()">🔁 Gerar novo</button>
+        </div>
       `:`
         <p class="msub" style="margin:0 0 8px">Gere um link pra compartilhar com sua equipe — é por ele que quem tem PIN entra, já direto na tela do restaurante certo.</p>
         <button class="master-only" style="width:100%;padding:8px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-weight:700;cursor:pointer;font-family:inherit;font-size:12px" onclick="gerarLinkLoginEquipe()">Gerar link</button>
