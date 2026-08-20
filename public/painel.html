@@ -672,13 +672,7 @@ function pracaDeOrigemDoGarcom(nome){
 // que a escala manual de cada turno seja independente uma da outra.
 function removerDeQualquerPraca(nome,d,mi){
   ["a","j"].forEach(tu=>{
-    const escManual=getEscalaManual(d,mi,tu);
-    const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
-    let mudou=false;
-    Object.keys(dist).forEach(k=>{
-      if(dist[k].includes(nome)){dist[k]=dist[k].filter(n=>n!==nome);mudou=true;}
-    });
-    if(mudou)setEscalaManual(d,mi,dist,tu);
+    ajustarEscalaManual(d,mi,tu,a=>{delete a.moves[nome];if(!a.removidos.includes(nome))a.removidos.push(nome);});
   });
 }
 function venderFolga(nome,d,mi){
@@ -725,9 +719,58 @@ function getExtras(id,d,mi){return EXTRAS[`${id}_${mi}_${d}`]||[];}
 // os call sites existentes (editar escala, praça, suporte) sem precisar
 // passar o turno explicitamente; só quem precisa mexer nos dois turnos de
 // propósito (ausência/férias, venda de folga) passa 'a'/'j' na mão.
-function getEscalaManual(d,mi,tu=gt()){return ESCALA_MANUAL[`${mi}_${d}_${tu}`]||null;}
-function setEscalaManual(d,mi,dist,tu=gt()){ESCALA_MANUAL[`${mi}_${d}_${tu}`]=dist;persistirEscalaManual(ds2s(mi,d),dist,tu);}
+// Formato de escala manual: só os AJUSTES que o gerente fez de propósito, não
+// mais uma "fotografia" completa do dia inteiro. moves: nome -> id da praça/
+// setor de destino. removidos: nomes tirados da escala de propósito nesse
+// dia/turno, mesmo que estejam disponíveis. Assim, qualquer funcionário novo
+// (ou que passe a estar disponível — data de início, volta de férias etc.)
+// sempre entra pela distribuição automática, mesmo em dias que já têm
+// ajustes manuais — ele nunca fica "fora de uma foto"; só quem foi mexido
+// de propósito fica preso a um lugar (ou fora da escala) fixo.
+function normalizarAjustesManual(raw){
+  if(!raw)return null;
+  if(raw.moves||raw.removidos)return{moves:raw.moves||{},removidos:raw.removidos||[]};
+  // Formato antigo (fotografia completa {praça/setor:[nomes]}): cada pessoa
+  // presente na foto vira um "move" explícito — preserva a arrumação de quem
+  // já estava lá, mas libera gente nova (fora da foto) pra entrar pela
+  // automática dali pra frente. Só afeta escalas manuais salvas antes dessa
+  // mudança — decisão combinada com o usuário: não dá pra recuperar quem foi
+  // excluído de propósito nessas escalas antigas (a foto não registra o
+  // motivo), e tudo bem, é raro e só vale pra trás.
+  const moves={};
+  Object.entries(raw).forEach(([alvo,nomes])=>{(nomes||[]).forEach(nome=>{moves[nome]=alvo;});});
+  return{moves,removidos:[]};
+}
+function getEscalaManual(d,mi,tu=gt()){return normalizarAjustesManual(ESCALA_MANUAL[`${mi}_${d}_${tu}`]);}
+function setEscalaManual(d,mi,ajustes,tu=gt()){ESCALA_MANUAL[`${mi}_${d}_${tu}`]=ajustes;persistirEscalaManual(ds2s(mi,d),ajustes,tu);}
 function resetEscalaManual(d,mi,tu=gt()){delete ESCALA_MANUAL[`${mi}_${d}_${tu}`];persistirResetEscalaManual(ds2s(mi,d),tu);}
+// Lê os ajustes atuais (ou começa vazio), aplica a mutação e salva — usado
+// por toda ação que move/remove alguém manualmente (praça, suporte, férias/
+// ausência, venda de folga).
+function ajustarEscalaManual(d,mi,tu,mutar){
+  const atual=getEscalaManual(d,mi,tu)||{moves:{},removidos:[]};
+  mutar(atual);
+  setEscalaManual(d,mi,atual,tu);
+}
+// Distribuição final do dia: parte da automática (quem está disponível agora,
+// distribuído por praça) e aplica por cima os ajustes manuais — só quem foi
+// mexido de propósito sai do lugar que a automática escolheria. Único ponto
+// de verdade usado tanto pra exibir a escala quanto pro modal de edição.
+// dgForce existe só pra renderEsc reaproveitar o "dg" que já calculou (que já
+// considera dia fechado); os outros chamadores recalculam por conta própria.
+function resolverEscala(d,mi,tu=gt(),dgForce){
+  const dg=dgForce!==undefined?dgForce:EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
+  const dist=distribuicaoAutomatica(dg);
+  const ajustes=getEscalaManual(d,mi,tu);
+  if(!ajustes)return dist;
+  const tocados=new Set([...Object.keys(ajustes.moves),...ajustes.removidos]);
+  Object.keys(dist).forEach(k=>{dist[k]=dist[k].filter(n=>!tocados.has(n));});
+  Object.entries(ajustes.moves).forEach(([nome,alvo])=>{
+    if(!dist[alvo])dist[alvo]=[];
+    if(!dist[alvo].includes(nome))dist[alvo].push(nome);
+  });
+  return dist;
+}
 // Lista fixa de funções que um extra pode exercer — independente de setor/
 // restaurante (universal entre clientes do GestãoSalão, ao contrário da área,
 // que é específica de cada casa). lid:true marca função de liderança, que
@@ -921,16 +964,8 @@ function scrollParaPracaEditada(pid){
   },80);
 }
 function openEditarEscala(d,mi,focoInicial){
-  const escManual=getEscalaManual(d,mi);
-  let distAtual;
-  if(escManual){
-    distAtual=JSON.parse(JSON.stringify(escManual));
-  } else {
-    const dg=EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
-    distAtual=distribuicaoAutomatica(dg);
-  }
   window._pracaEditSel=focoInicial||null;
-  renderModalEscala(d,mi,distAtual);
+  renderModalEscala(d,mi,resolverEscala(d,mi));
   scrollParaPracaEditada(focoInicial);
 }
 function getTodosDisponiveis(d,mi){
@@ -974,7 +1009,7 @@ function renderModalEscala(d,mi,dist){
     h+=`<div id="escsel-${p.id}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:800;color:var(--text)">${p.n} <span style="font-size:10px;color:var(--text3);font-weight:400">Cap. ${p.tl} pax</span></span>
-        <button onclick="window._pracaEditSel='${isAberta?"":p.id}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
+        <button onclick="window._pracaEditSel='${isAberta?"":p.id}';renderModalEscala(${d},${mi},resolverEscala(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${isAberta?"8px":"0"}">
         ${(dist[p.id]||[]).map(g=>{
@@ -1012,7 +1047,7 @@ function renderModalEscala(d,mi,dist){
     h+=`<div id="escsel-${sk}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
         <span style="font-size:12px;font-weight:800;color:var(--text)">${eqSup.e} ${sl}</span>
-        <button onclick="window._pracaEditSel='${isAberta?"":sk}';renderModalEscala(${d},${mi},getEscalaManual(${d},${mi})||getDistBase(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
+        <button onclick="window._pracaEditSel='${isAberta?"":sk}';renderModalEscala(${d},${mi},resolverEscala(${d},${mi}))" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700">${isAberta?"Fechar ▲":"+ Adicionar ▼"}</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:${isAberta?"8px":"0"}">
         ${jaAlocadoAqui.map(g=>{
@@ -1046,27 +1081,18 @@ function renderModalEscala(d,mi,dist){
 }
 
 let _distTemp={};
-function getDistBase(d,mi){
-  const dg=EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
-  return distribuicaoAutomatica(dg);
-}
+// Mantido por segurança/compatibilidade — hoje equivale a resolverEscala sem
+// nenhum ajuste manual aplicado (só a distribuição automática pura).
+function getDistBase(d,mi){return distribuicaoAutomatica(EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi)));}
 function removerDaPraca(pid,nome,d,mi,tu=gt()){
-  const escManual=getEscalaManual(d,mi,tu);
-  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
-  if(dist[pid]) dist[pid]=dist[pid].filter(n=>n!==nome);
-  setEscalaManual(d,mi,dist,tu);
-  renderModalEscala(d,mi,dist);
+  ajustarEscalaManual(d,mi,tu,a=>{delete a.moves[nome];if(!a.removidos.includes(nome))a.removidos.push(nome);});
+  renderModalEscala(d,mi,resolverEscala(d,mi,tu));
   scrollParaPracaEditada(window._pracaEditSel);
 }
 function moverParaPraca(pid,nome,d,mi,tu=gt()){
   if(!nome) return;
-  const escManual=getEscalaManual(d,mi,tu);
-  const dist=escManual?JSON.parse(JSON.stringify(escManual)):getDistBase(d,mi);
-  Object.keys(dist).forEach(k=>{dist[k]=dist[k].filter(n=>n!==nome);});
-  if(!dist[pid]) dist[pid]=[];
-  dist[pid].push(nome);
-  setEscalaManual(d,mi,dist,tu);
-  renderModalEscala(d,mi,dist);
+  ajustarEscalaManual(d,mi,tu,a=>{a.moves[nome]=pid;a.removidos=a.removidos.filter(n=>n!==nome);});
+  renderModalEscala(d,mi,resolverEscala(d,mi,tu));
   scrollParaPracaEditada(window._pracaEditSel);
 }
 function salvarEscalaManual(d,mi){
@@ -1150,13 +1176,7 @@ function renderEsc(d,mi){
   const folgasHoje=tFolgas(d,mi);
   const totalF=Object.values(folgasHoje).reduce((s,v)=>s+v.length,0);
   const ausencias=AUSENCIAS[`${mi}_${d}`]||[];
-  let dist;
-  const escManual=getEscalaManual(d,mi);
-  if(escManual){
-    dist=escManual;
-  } else {
-    dist=distribuicaoAutomatica(dg);
-  }
+  const dist=resolverEscala(d,mi,tu,dg);
 
   let h=`<div class="esc">`;
 
@@ -1294,7 +1314,8 @@ function renderEsc(d,mi){
   }
 
   // PRAÇAS
-  const temManual=!!getEscalaManual(d,mi);
+  const ajustesHoje=getEscalaManual(d,mi);
+  const temManual=!!(ajustesHoje&&(Object.keys(ajustesHoje.moves).length||ajustesHoje.removidos.length));
   h+=`<div class="sec">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <div class="sec-title" style="margin-bottom:0">Praças</div>
@@ -1338,12 +1359,10 @@ function renderEsc(d,mi){
   h+=`</div></div>`;
 
   // SUPORTE
-  // pegar todos alocados nas praças (escala manual inclui suporte)
-  const escManualCompleta=getEscalaManual(d,mi)||{};
-  const alocadosNasPracas=new Set([
-    ...Object.values(dist).flat(),
-    ...Object.values(escManualCompleta).flat()
-  ]);
+  // dist já é o resultado final (praças + qualquer ajuste manual de suporte
+  // aplicado por cima, via resolverEscala) — não precisa mais somar com uma
+  // cópia separada da escala manual só pra pegar quem foi movido pro suporte.
+  const alocadosNasPracas=new Set(Object.values(dist).flat());
   h+=`<div class="sec"><div class="sec-title">Suporte</div><div class="cgrid">`;
   // Esterilização — sábados, domingos e feriados, sempre extra
   const isSabDomFer=dn==="Sábado"||isDomOuFer;
