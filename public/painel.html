@@ -125,14 +125,26 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .leg-fer b{color:var(--yellow);font-weight:800;min-width:16px}
 
 /* ESCALA */
-.esc{background:var(--surface);border-radius:var(--r);overflow:hidden;box-shadow:var(--shadow-md);border:1px solid var(--border)}
+/* overflow:hidden removido de propósito: quebraria o position:sticky do
+   .eh logo abaixo (um filho sticky não gruda em lugar nenhum se qualquer
+   ancestral tiver overflow diferente de "visible" — vira a caixa de
+   referência do sticky, e como o próprio .esc não é quem rola, o efeito
+   simplesmente não acontece). O arredondamento do topo agora é feito pelo
+   próprio .eh (só ele tinha risco de "vazar" quadrado pra fora do canto
+   arredondado — o resto do conteúdo tem fundo branco igual ao de .esc,
+   então não precisa de clip pra ficar certo). */
+.esc{background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow-md);border:1px solid var(--border)}
 .esc-empty{padding:2.5rem 1rem;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:280px;text-align:center;gap:10px}
 .esc-empty .ei{font-size:40px;margin-bottom:4px}
 .esc-empty p{font-size:14px;color:var(--text2);font-weight:500}
 .esc-empty span{font-size:12px;color:var(--text3)}
 
-/* HEADER ESCALA */
-.eh{padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%)}
+/* HEADER ESCALA — sticky, empilhado logo abaixo do .app-header (também
+   sticky): top usa o mesmo ~144px já calibrado pro header principal (132px
+   medidos + folga), dando um respiro visual entre os dois blocos escuros
+   em vez de grudarem sem transição. z-index:5, sempre abaixo do header
+   (10) e bem abaixo de drawer/modal/lightbox (999+). */
+.eh{padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%);border-radius:var(--r) var(--r) 0 0;position:sticky;top:144px;z-index:5}
 .edate{font-size:18px;font-weight:800;color:white;letter-spacing:-.3px}
 .eturn{font-size:12px;color:rgba(255,255,255,.65);margin-top:3px;font-weight:500}
 .head-badges{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
