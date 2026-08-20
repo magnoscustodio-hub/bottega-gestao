@@ -31,8 +31,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 
 /* HEADER — sempre 2 linhas fixas, independente do tamanho do nome/legenda
    do restaurante: linha 1 (logo+nome, truncado com "...") nunca empurra ou
-   desalinha a linha 2 (botões de menu). */
-.app-header{display:flex;flex-direction:column;gap:12px;margin-bottom:20px;padding:14px 18px;background:var(--text);border-radius:var(--r);box-shadow:var(--shadow-md)}
+   desalinha a linha 2 (botões de menu). position:sticky fixa o cabeçalho no
+   topo ao rolar (Agenda/Eventos/Menu sempre acessíveis, sem precisar rolar
+   de volta pro topo toda vez) — não usamos "fixed" pra não tirar o header
+   do fluxo normal do documento, que exigiria compensar a altura dele com
+   padding manual em ".app"; sticky faz isso sozinho. z-index:10 é só o
+   suficiente pra ficar acima do conteúdo da página (.main não define
+   z-index, então herda 0); bem abaixo do drawer/modal/lightbox (999+),
+   que continuam cobrindo o header normalmente quando abertos. */
+.app-header{display:flex;flex-direction:column;gap:12px;margin-bottom:20px;padding:14px 18px;background:var(--text);border-radius:var(--r);box-shadow:var(--shadow-md);position:sticky;top:0;z-index:10}
 .app-header-top{display:flex;align-items:center;gap:14px;min-width:0}
 .logo-wrap{width:52px;height:52px;border-radius:10px;background:white;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;box-shadow:0 2px 8px rgba(0,0,0,.2)}
 .logo-wrap img{width:100%;height:100%;object-fit:cover}
@@ -76,6 +83,11 @@ body.nivel-nao-master .master-only{display:none!important}
 
 /* CONTROLS */
 .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;align-items:flex-end}
+/* scroll-margin-top compensa o header sticky (~132px medidos) + folga —
+   sem isso, o scrollIntoView automático ao selecionar um dia (mobile,
+   abaixo) rolaria a escala até tocar o topo do viewport, ficando
+   parcialmente escondida atrás do cabeçalho fixo por cima. */
+#esc{scroll-margin-top:144px}
 .ctrl label{display:block;font-size:10px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
 select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface) url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%236B5F52' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;-webkit-appearance:none;color:var(--text);font-weight:600;box-shadow:var(--shadow)}
 
