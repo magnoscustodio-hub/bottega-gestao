@@ -818,9 +818,12 @@ function nomeDaAreaExtra(alvo){
 // pelas Praças, Suporte e Esterilização.
 function chipsExtrasHtml(extras,alvo,d,mi){
   return extras.map(e=>{
-    const valorTxt=fmtValorExtra(e.valor);
+    // Valor de propósito fora do chip do dia a dia (poluía visualmente cards
+    // com vários extras) — continua salvo normal em extras.valor, só não
+    // aparece aqui. Visível no relatório de Extras (stat-cards, Por área/
+    // função/funcionário, tabela, Excel).
     const funcaoTxt=e.funcao?`<span style="opacity:.7;font-weight:500"> · ${funcaoELideranca(e.funcao)?ICONE_LIDERANCA_EXTRA+" ":""}${e.funcao}</span>`:"";
-    return `<span class="extra-chip"><span class="ect-txt">⭐${e.nome}${funcaoTxt}${valorTxt?` R$${valorTxt}`:""}</span><button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
+    return `<span class="extra-chip"><span class="ect-txt">⭐${e.nome}${funcaoTxt}</span><button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
   }).join("");
 }
 // Campo "+ extra..." (nome + função opcional + valor opcional em R$). Enter em
