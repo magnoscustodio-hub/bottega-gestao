@@ -3099,7 +3099,14 @@ function agRolarParaPrimeiroPendente(){
   if(!alvoId)return;
   setTimeout(()=>{
     const el=document.getElementById("ag-item-"+alvoId);
-    if(el)el.scrollIntoView({behavior:"smooth",block:"start"});
+    // behavior:"auto" (instantâneo), não "smooth" — a lista rola dentro de DOIS
+    // containers aninhados (.mbox e .ag-lista, cada um com seu próprio
+    // overflow-y:auto); com histórico grande (muitos compromissos concluídos
+    // antigos), a animação suave dos dois precisa de ~300-400ms pra terminar
+    // de verdade — bem mais que o esperado — e ficava fácil de "não rolar"
+    // se algo interrompesse a animação no meio. Instantâneo não depende de
+    // nenhuma janela de tempo pra funcionar.
+    if(el)el.scrollIntoView({behavior:"auto",block:"start"});
   },80);
 }
 async function openAgenda(){
