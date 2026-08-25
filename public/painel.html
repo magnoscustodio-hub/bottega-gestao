@@ -3199,7 +3199,7 @@ function renderAgendaModal(){
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:${c.desc&&!c.concluido?"8px":"0"}">
             <div style="display:flex;align-items:flex-start;gap:10px;flex:1;min-width:0">
               <div style="width:36px;height:36px;border-radius:50%;background:${t.cor}18;color:${t.cor};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${t.emoji}</div>
-              <div style="flex:1;min-width:0;${isEventoModal?"cursor:pointer":""}"${isEventoModal?` onclick="abrirModalEvento('${c.id}')"`:""}>
+              <div style="flex:1;min-width:0;${isEventoModal?"cursor:pointer":""}"${isEventoModal?` onclick="abrirModalEvento('${c.id}',true)"`:""}>
                 <div style="font-size:14px;font-weight:700;color:var(--text);${c.concluido?"text-decoration:line-through;color:var(--text3)":""};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.titulo}</div>
                 <div style="display:flex;align-items:center;gap:8px;margin-top:3px;flex-wrap:wrap">
                   ${c.hora?`<span style="font-size:11px;color:var(--text2);font-weight:600">${c.hora}</span>`:""}
@@ -3478,7 +3478,16 @@ function fecharLightbox(){
 }
 
 // --- Modal de detalhes do Evento (aberto a partir do widget Agenda na Home) ---
-async function abrirModalEvento(id){
+// voltarParaAgenda: true quando aberto de dentro da lista da Agenda/Eventos
+// (nesse caso "Cancelar" deve reabrir a lista, não fechar tudo); false (ou
+// omitido) quando aberto direto do banner do evento na tela do dia — nesse
+// caso fechar mesmo é o certo, não tem "tela anterior" nenhuma pra voltar.
+// Guardado num global (não como parâmetro de renderModalEvento) porque
+// enviarMenuEvento/removerMenuEvento re-chamam abrirModalEvento(id) sem esse
+// argumento pra só atualizar o conteúdo — precisam preservar o valor já
+// escolhido, não resetar pra false.
+async function abrirModalEvento(id,voltarParaAgenda){
+  if(voltarParaAgenda!==undefined)window._eventoVoltarParaAgenda=voltarParaAgenda;
   const c=AGENDA.find(x=>x.id===id);
   if(!c)return;
   let imgUrl=null;
@@ -3488,11 +3497,17 @@ async function abrirModalEvento(id){
   }
   renderModalEvento(c,imgUrl);
 }
+function fecharModalEvento(){
+  const voltar=!!window._eventoVoltarParaAgenda;
+  window._eventoVoltarParaAgenda=false;
+  if(voltar){renderAgendaModal();return;}
+  cMod();
+}
 function renderModalEvento(c,imgUrl){
   const podeEditar=agPodeEditar(c);
   const praca=c.pracaId?(PD.find(p=>p.id===c.pracaId)?.n||"Restaurante todo"):"Restaurante todo";
   document.getElementById("modal").innerHTML=`
-    <div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
+    <div class="mov" onclick="if(event.target===this)fecharModalEvento()"><div class="mbox">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
         <div style="width:40px;height:40px;border-radius:50%;background:#A81E6B18;color:#A81E6B;display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0">🎉</div>
         <h3 style="margin:0">${podeEditar?"Editar evento":"Detalhes do evento"}</h3>
@@ -3505,13 +3520,17 @@ function renderModalEvento(c,imgUrl){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
         <div>
-          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Pax esperado</label>
-          <input type="number" id="ev-pax" min="0" placeholder="0" value="${c.paxEsperado||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface);color:var(--text);font-family:inherit;-webkit-appearance:none">
+          <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Data</label>
+          <input type="date" id="ev-data" value="${c.data||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface);color:var(--text);font-family:inherit;-webkit-appearance:none">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Horário</label>
           <input type="time" id="ev-hora" value="${c.hora||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface);color:var(--text);font-family:inherit;-webkit-appearance:none">
         </div>
+      </div>
+      <div class="field" style="margin-bottom:14px">
+        <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Pax esperado</label>
+        <input type="number" id="ev-pax" min="0" placeholder="0" value="${c.paxEsperado||""}" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface);color:var(--text);font-family:inherit;-webkit-appearance:none">
       </div>
       <div class="field">
         <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Praça/Locação</label>
@@ -3537,19 +3556,21 @@ function renderModalEvento(c,imgUrl){
           ${imgUrl?`<button style="padding:9px 14px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface);color:var(--danger);cursor:pointer;font-family:inherit;font-weight:700" onclick="removerMenuEvento('${c.id}')">Remover</button>`:""}
         </div>`:""}
       </div>
-      <div class="macts"><button onclick="cMod()">${podeEditar?"Cancelar":"Fechar"}</button>${podeEditar?`<button class="bok" onclick="salvarModalEvento('${c.id}')">Salvar</button>`:""}</div>
+      <div class="macts"><button onclick="fecharModalEvento()">${podeEditar?"Cancelar":"Fechar"}</button>${podeEditar?`<button class="bok" onclick="salvarModalEvento('${c.id}')">Salvar</button>`:""}</div>
     </div></div>`;
 }
 async function salvarModalEvento(id){
   const titulo=document.getElementById("ev-titulo").value.trim();
   if(!titulo){alert("Informe o nome do evento.");return;}
+  const dataEvento=document.getElementById("ev-data").value;
+  if(!dataEvento){alert("Informe a data do evento.");return;}
   const hora=document.getElementById("ev-hora").value;
   const paxEl=document.getElementById("ev-pax");
   const paxEsperado=paxEl&&paxEl.value?parseInt(paxEl.value,10):null;
   const pracaEl=document.getElementById("ev-praca");
   const pracaId=pracaEl&&pracaEl.value?pracaEl.value:null;
   const{data,error}=await supabaseClient.from("agenda_compromissos")
-    .update({titulo,hora:hora||null,pax_esperado:paxEsperado,praca_id:pracaId})
+    .update({titulo,data:dataEvento,hora:hora||null,pax_esperado:paxEsperado,praca_id:pracaId})
     .eq("id",id).select("id");
   if(error||!data||data.length===0){avisoErro("Sem permissão para editar este evento.");return;}
   await carregarAgenda();
@@ -3719,7 +3740,7 @@ function eventoBanner(ds){
   return eventos.map(ev=>{
     const praca=ev.pracaId?(PD.find(p=>p.id===ev.pracaId)?.n||"Restaurante todo"):"Restaurante todo";
     const pax=ev.paxEsperado||0;
-    return `<div class="albox alev" style="cursor:pointer" onclick="abrirModalEvento('${ev.id}')">🎉 <span>Evento: ${ev.titulo} — ${pax} pax — ${praca}</span></div>`;
+    return `<div class="albox alev" style="cursor:pointer" onclick="abrirModalEvento('${ev.id}',false)">🎉 <span>Evento: ${ev.titulo} — ${pax} pax — ${praca}</span></div>`;
   }).join("");
 }
 function feriasBanner(mi,extraStyle){
