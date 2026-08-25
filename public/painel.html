@@ -2102,6 +2102,7 @@ function renderDrawer(){
 // --- Funcionários ---
 function abrirConfigFuncionarios(){
   window._configFuncSetorAberto=null;
+  window._funcEditando=null;
   renderConfigFuncionarios();
 }
 function renderConfigFuncionarios(){
@@ -2120,25 +2121,39 @@ function renderConfigFuncionarios(){
       ${aberto?`<div class="fs-setor-body">${eq.m.length?eq.m.map(nome=>`
         <div class="fs-func-btn" style="cursor:default">
           <span>${nome}</span>
-          <button class="master-only" onclick="confirmarRemoverFuncionario('${nome}')" style="background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
+          <span style="display:flex;gap:6px;flex-shrink:0">
+            <button class="master-only" onclick="editarFuncionario('${nome}')" style="background:var(--gold-bg);border:1px solid var(--gold-br);color:var(--gold);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">✏️ Editar</button>
+            <button class="master-only" onclick="confirmarRemoverFuncionario('${nome}')" style="background:var(--red-bg);border:1px solid var(--red-br);color:var(--red);border-radius:20px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🗑️ Remover</button>
+          </span>
         </div>`).join(""):`<div style="padding:8px 0;color:var(--text3);font-size:12px">Nenhum funcionário neste setor.</div>`}
       </div>`:""}
     </div>`;
   });
+  // Formulário do rodapé faz dupla função: "+ Adicionar" (padrão) e "Editar"
+  // (quando window._funcEditando está setado por editarFuncionario) — mesmos
+  // campos/ids nos dois casos, só muda título/valores iniciais/botão final,
+  // pra não duplicar o formulário inteiro.
+  const editando=window._funcEditando;
+  const nomeIni=editando?editando.nome:"";
+  const cargoIni=editando?(CARGO_POR_NOME[editando.nome]||""):"";
+  const setorIni=editando?Object.keys(EQ).find(k=>EQ[k].m.includes(editando.nome))||"":"";
+  const pracaIni=editando?((PD.find(p=>(p.gc||[]).includes(editando.nome))||{}).id||""):"";
+  const dataInicioIni=editando?(DATA_INICIO_POR_NOME[editando.nome]||""):"";
   h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
-    <div class="sec-title" style="margin-bottom:8px">+ Adicionar funcionário</div>
+    <div class="sec-title" style="margin-bottom:8px">${editando?"✏️ Editar funcionário":"+ Adicionar funcionário"}</div>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
-    <input id="nf-nome" type="text" class="minp" placeholder="Nome completo">
+    <input id="nf-nome" type="text" class="minp" placeholder="Nome completo" value="${nomeIni}">
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cargo (opcional)</label>
-    <input id="nf-cargo" type="text" class="minp" placeholder="Ex: Garçom, Recepcionista...">
+    <input id="nf-cargo" type="text" class="minp" placeholder="Ex: Garçom, Recepcionista..." value="${cargoIni}">
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Setor</label>
-    <select id="nf-setor" class="msel">${Object.keys(EQ).map(k=>`<option value="${k}">${EQ[k].l}</option>`).join("")}</select>
+    <select id="nf-setor" class="msel">${Object.keys(EQ).map(k=>`<option value="${k}"${k===setorIni?" selected":""}>${EQ[k].l}</option>`).join("")}</select>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Praça preferencial (opcional)</label>
-    <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}">${p.n}</option>`).join("")}</select>
+    <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}"${p.id===pracaIni?" selected":""}>${p.n}</option>`).join("")}</select>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Data de início (opcional)</label>
-    <input id="nf-data-inicio" type="date" class="msel" style="margin-bottom:12px">
+    <input id="nf-data-inicio" type="date" class="msel" style="margin-bottom:12px" value="${dataInicioIni}">
     <p class="msub" style="margin-top:-6px">Em branco, fica disponível pra escala desde já. Preenchida, só aparece como opção a partir dessa data.</p>
-    <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="adicionarFuncionario()">+ Adicionar</button>
+    <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="${editando?"salvarEdicaoFuncionario()":"adicionarFuncionario()"}">${editando?"Salvar alterações":"+ Adicionar"}</button>
+    ${editando?`<button style="width:100%;padding:8px;border-radius:var(--rs);border:none;background:transparent;color:var(--text2);font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px" onclick="window._funcEditando=null;renderConfigFuncionarios()">Cancelar edição</button>`:""}
   </div>
   <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
   </div></div>`;
@@ -2158,6 +2173,37 @@ async function adicionarFuncionario(){
   });
   if(error){avisoErro("Não foi possível adicionar "+nome+".");return;}
   showToast("✅ "+nome+" adicionado(a)!");
+  await carregarEquipeEPracas();
+  if(dSel)renderEsc(dSel,gm());
+  renderConfigFuncionarios();
+}
+// Abre o formulário do rodapé em modo edição, pré-preenchido com os dados
+// atuais — setor e praça preferencial são descobertos a partir do que já
+// está carregado em EQ/PD (procurando em qual setor/praça o nome aparece),
+// sem precisar de uma consulta nova ao banco.
+function editarFuncionario(nome){
+  const funcionarioId=FUNC_ID_POR_NOME[nome];
+  if(!funcionarioId)return;
+  window._funcEditando={id:funcionarioId,nome};
+  renderConfigFuncionarios();
+}
+async function salvarEdicaoFuncionario(){
+  const editando=window._funcEditando;
+  if(!editando)return;
+  const nome=document.getElementById("nf-nome").value.trim();
+  const cargo=document.getElementById("nf-cargo").value.trim();
+  const setorChave=document.getElementById("nf-setor").value;
+  const pracaId=document.getElementById("nf-praca").value;
+  const dataInicio=document.getElementById("nf-data-inicio").value;
+  if(!nome){avisoErro("Informe o nome do funcionário.");return;}
+  const setorId=EQ[setorChave]&&EQ[setorChave].id;
+  if(!setorId){avisoErro("Setor inválido.");return;}
+  const{error}=await supabaseClient.from("funcionarios").update({
+    nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,
+  }).eq("id",editando.id);
+  if(error){avisoErro("Não foi possível salvar as alterações de "+editando.nome+".");return;}
+  showToast("✅ "+nome+" atualizado(a)!");
+  window._funcEditando=null;
   await carregarEquipeEPracas();
   if(dSel)renderEsc(dSel,gm());
   renderConfigFuncionarios();
