@@ -430,6 +430,9 @@ function diaFechadoNesteTurno(dn,tu){
 let FOLGAS={};
 let FERIAS={};
 let AUSENCIAS={},HISTORICO=[],FERIAS_ROWS=[],EXTRAS={},RES={},FOLGAS_VENDIDAS={},ESCALA_MANUAL={};
+// Praças fechadas manualmente por dia+turno: {"mi_d_tu":[pracaId,...]} — só
+// pra aquele dia específico, não é regra recorrente (diferente de "fimSemana").
+let PRACAS_FECHADAS={};
 let HISTORICO_FOLGAS_VENDIDAS=[];
 let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
@@ -509,6 +512,20 @@ async function persistirEscalaManual(ds,dist,turno){
 async function persistirResetEscalaManual(ds,turno){
   const{error}=await supabaseClient.from("escala_manual").delete().eq("restaurante_id",RESTAURANTE_ID).eq("data",ds).eq("turno",turno);
   if(error)avisoErro("Não foi possível redefinir a escala manual.");
+}
+// Fechamento manual de praça por dia+turno — tabela própria (não cabe no
+// modelo moves/removidos de escala_manual, que é sobre PESSOAS, não sobre
+// quais praças estão elegíveis). Lista vazia é tratada como "sem registro"
+// (deleta a linha em vez de gravar array vazio), mesmo espírito do reset da
+// escala manual — não deixa lixo de "nenhuma praça fechada" no banco.
+async function persistirPracasFechadas(ds,turno,pracas){
+  if(!pracas||pracas.length===0){
+    const{error}=await supabaseClient.from("pracas_fechadas").delete().eq("restaurante_id",RESTAURANTE_ID).eq("data",ds).eq("turno",turno);
+    if(error)avisoErro("Não foi possível reabrir a praça.");
+    return;
+  }
+  const{error}=await supabaseClient.from("pracas_fechadas").upsert({restaurante_id:RESTAURANTE_ID,data:ds,turno,pracas,updated_at:new Date().toISOString()},{onConflict:"restaurante_id,data,turno"});
+  if(error)avisoErro("Não foi possível fechar a praça.");
 }
 async function persistirExtra(alvo,ds,nome,adicionar,valor,funcao){
   if(adicionar){
@@ -773,6 +790,31 @@ function ajustarEscalaManual(d,mi,tu,mutar){
   mutar(atual);
   setEscalaManual(d,mi,atual,tu);
 }
+// Praças fechadas manualmente pelo gerente, só pro dia+turno sendo visto —
+// não é regra recorrente (isso já existe, é o "fimSemana"). Estrutura própria
+// (não cabe no moves/removidos de escala_manual, que é sobre PESSOAS, não
+// sobre quais praças estão elegíveis pra receber gente).
+function getPracasFechadas(d,mi,tu=gt()){return PRACAS_FECHADAS[`${mi}_${d}_${tu}`]||[];}
+function togglePracaFechada(pid,d,mi,tu=gt()){
+  const atual=getPracasFechadas(d,mi,tu);
+  const estaFechada=atual.includes(pid);
+  const novaLista=estaFechada?atual.filter(x=>x!==pid):[...atual,pid];
+  if(novaLista.length)PRACAS_FECHADAS[`${mi}_${d}_${tu}`]=novaLista;
+  else delete PRACAS_FECHADAS[`${mi}_${d}_${tu}`];
+  // Ao fechar: limpa qualquer ajuste manual que hoje aponte pra essa praça —
+  // sem isso, resolverEscala reaplicaria o "move" antigo por cima da
+  // distribuição nova e a pessoa voltaria pra uma praça fechada. Isso é o que
+  // libera essas pessoas de volta pra distribuição automática nas praças que
+  // continuam abertas (ponto 3 do pedido) — reabrir não precisa do inverso,
+  // a automática já reconsidera a praça no próximo resolverEscala.
+  if(!estaFechada){
+    ajustarEscalaManual(d,mi,tu,a=>{
+      Object.keys(a.moves).forEach(nome=>{if(a.moves[nome]===pid)delete a.moves[nome];});
+    });
+  }
+  persistirPracasFechadas(ds2s(mi,d),tu,novaLista);
+  renderEsc(d,mi);
+}
 // Distribuição final do dia: parte da automática (quem está disponível agora,
 // distribuído por praça) e aplica por cima os ajustes manuais — só quem foi
 // mexido de propósito sai do lugar que a automática escolheria. Único ponto
@@ -781,7 +823,7 @@ function ajustarEscalaManual(d,mi,tu,mutar){
 // considera dia fechado); os outros chamadores recalculam por conta própria.
 function resolverEscala(d,mi,tu=gt(),dgForce){
   const dg=dgForce!==undefined?dgForce:EQ.garcons.m.filter(g=>disponivelParaEscala(g,d,mi));
-  const dist=distribuicaoAutomatica(dg);
+  const dist=distribuicaoAutomatica(dg,getPracasFechadas(d,mi,tu));
   const ajustes=getEscalaManual(d,mi,tu);
   if(!ajustes)return dist;
   const tocados=new Set([...Object.keys(ajustes.moves),...ajustes.removidos]);
@@ -957,14 +999,15 @@ function selDay(d){
   dSel=d;renderCal();renderEsc(d,cm);
   setTimeout(()=>{const el=document.getElementById("esc");if(el&&window.innerWidth<=620)el.scrollIntoView({behavior:"smooth",block:"start"});},80);
 }
-function distribuicaoAutomatica(dg){
+function distribuicaoAutomatica(dg,fechadas){
+  const fch=fechadas||[];
   const dist={};
   PD.forEach(p=>{dist[p.id]=[];});
   const al=new Set();
-  PD.filter(p=>!p.fch).forEach(p=>{(p.gc||[]).forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
+  PD.filter(p=>!p.fch&&!fch.includes(p.id)).forEach(p=>{(p.gc||[]).forEach(g=>{if(dg.includes(g)&&!al.has(g)){dist[p.id].push(g);al.add(g);}});});
   // Restante (sem praça preferida): round-robin entre as praças elegíveis,
   // pra não empilhar todo mundo na primeira praça da lista (bug antigo).
-  const pracasElegiveis=PD.filter(p=>!p.fch&&!p.fimSemana);
+  const pracasElegiveis=PD.filter(p=>!p.fch&&!p.fimSemana&&!fch.includes(p.id));
   if(pracasElegiveis.length>0){
     let i=0;
     dg.forEach(g=>{
@@ -1027,8 +1070,9 @@ function renderModalEscala(d,mi,dist){
 
   // lista de alocados
   const alocados=new Set(Object.values(dist).flat());
+  const fechadasHoje=getPracasFechadas(d,mi);
 
-  PD.filter(p=>!p.fch&&(!p.fimSemana||isSabDomFer)).forEach(p=>{
+  PD.filter(p=>!p.fch&&(!p.fimSemana||isSabDomFer)&&!fechadasHoje.includes(p.id)).forEach(p=>{
     const isAberta=pracaSel===p.id;
     h+=`<div id="escsel-${p.id}" style="background:var(--surface2);border-radius:var(--rs);padding:10px 12px;margin-bottom:8px;border:1.5px solid ${isAberta?"var(--gold)":"var(--border)"}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -1350,6 +1394,7 @@ function renderEsc(d,mi){
       </div>
     </div>
     <div class="cgrid">`;
+  const fechadasHoje=getPracasFechadas(d,mi,tu);
   PD.forEach(p=>{
     const _isSabDomFer=dn==="Sábado"||isDom||!!fer;
     if(p.fimSemana&&!_isSabDomFer) return;
@@ -1357,8 +1402,18 @@ function renderEsc(d,mi){
     const ppx=Math.round(pax*(p.tl/CAA)),mp=Math.round(p.tm*Math.min(1,oc)),nx=gl.length===0;
     const extras=getExtras(p.id,d,mi);
     if(isFch){h+=`<div class="pc pf"><div class="pn">${p.n}</div><div class="ps">Fechada · abre &gt;85%</div></div>`;return;}
+    // Fechada manualmente pro dia — card reduzido, só com o botão de reabrir.
+    // Diferente do isFch acima (fechamento automático por baixa ocupação,
+    // hoje sempre inativo): esta é uma decisão do gerente só pra esta data.
+    if(fechadasHoje.includes(p.id)){
+      h+=`<div class="pc pf">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span class="pn">${p.n}</span><button class="edit-only" onclick="togglePracaFechada('${p.id}',${d},${mi})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:700">🔓 Reabrir</button></div>
+        <div class="ps">🔒 Fechada hoje</div>
+      </div>`;
+      return;
+    }
     h+=`<div class="pc${p.pref?" pp":nx&&extras.length===0?" px":""}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span style="display:flex;align-items:center;gap:6px">${p.pref?bdg("pref","in"):""}<button class="edit-only" onclick="openEditarEscala(${d},${mi},'${p.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${p.n}">✏️</button></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span style="display:flex;align-items:center;gap:6px">${p.pref?bdg("pref","in"):""}<button class="edit-only" onclick="togglePracaFechada('${p.id}',${d},${mi})" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Fechar ${p.n} hoje">🔒</button><button class="edit-only" onclick="openEditarEscala(${d},${mi},'${p.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${p.n}">✏️</button></span></div>
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
@@ -3837,15 +3892,16 @@ async function carregarOperacional(){
   const inicio=`${cy}-${String(cm+1).padStart(2,"0")}-01`;
   const fim=`${cy}-${String(cm+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
 
-  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};
+  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};PRACAS_FECHADAS={};
 
-  const[folgasRes,resRes,extrasRes,escalaRes,fvRes,hpRes]=await Promise.all([
+  const[folgasRes,resRes,extrasRes,escalaRes,fvRes,hpRes,pfRes]=await Promise.all([
     supabaseClient.from("folgas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
     supabaseClient.from("reservas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("extras").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("escala_manual").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("folgas_vendidas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
     supabaseClient.from("horarios_pontuais").select("data,hora,funcionarios(nome)").gte("data",inicio).lte("data",fim),
+    supabaseClient.from("pracas_fechadas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
   ]);
 
   FOLGAS[cm]=FOLGAS[cm]||{};
@@ -3871,6 +3927,11 @@ async function carregarOperacional(){
   (escalaRes.data||[]).forEach(r=>{
     const dia=parseInt(r.data.split("-")[2],10);
     ESCALA_MANUAL[`${cm}_${dia}_${r.turno||"a"}`]=r.distribuicao;
+  });
+
+  (pfRes.data||[]).forEach(r=>{
+    const dia=parseInt(r.data.split("-")[2],10);
+    PRACAS_FECHADAS[`${cm}_${dia}_${r.turno||"a"}`]=r.pracas||[];
   });
 
   (fvRes.data||[]).forEach(r=>{
