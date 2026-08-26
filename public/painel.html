@@ -439,6 +439,11 @@ let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 let TURNO="a";
 let fsMes=6,fsAno=2026,fsFunc=null,fsSetorAberto=null,fsDias={};
 let fsAba="folgas";
+// Cache de trabalho da tela de Folgas: {"ano-mi": {nome:[dias]}} — guarda uma
+// cópia por mês visitado durante esta abertura da tela (não só o mês atual),
+// pra navegar entre meses sem perder edição não salva de nenhum deles; tudo é
+// persistido de uma vez em salvarFolgas() e descartado ao fechar/cancelar.
+let fsCache={};
 
 let EQ={};
 // Horários especiais de entrada — carregado do Supabase (tabela horarios_especiais) em boot().
@@ -1771,16 +1776,51 @@ function exportarAusenciasXlsx(filtroFunc,filtroMes){
 }
 
 // FOLGAS
-function openFolgasMes(){
-  fsMes=gm();fsAno=cy;fsFunc=null;fsSetorAberto=null;fsDias={};
-  const f=FOLGAS[fsMes]||{};
-  Object.keys(EQ).forEach(k=>EQ[k].m.forEach(g=>{fsDias[g]=[...(f[g]||[])];} ));
+// Carrega (ou reaproveita do fsCache) as folgas de um mês/ano específico pra
+// dentro de fsDias. Se for o mês já ativo na tela principal (cm/cy), reusa
+// FOLGAS[cm] — já está em memória, sem nova consulta. Se for outro mês
+// (passado ou futuro), busca só a tabela "folgas" nesse intervalo — não
+// mexe em reservas/extras/escala manual/horários pontuais, que continuam
+// sempre escopados ao mês ativo cm/cy (carregarOperacional). Isso garante
+// que trocar de mês aqui não interfere em nada da escala/distribuição
+// automática de outros meses.
+async function fsCarregarMes(mi,ano){
+  const chave=`${ano}-${mi}`;
+  if(fsCache[chave]){fsDias=fsCache[chave];return;}
+  const base={};
+  Object.keys(EQ).forEach(k=>EQ[k].m.forEach(g=>{base[g]=[];}));
+  if(mi===cm&&ano===cy){
+    const f=FOLGAS[cm]||{};
+    Object.keys(base).forEach(g=>{base[g]=[...(f[g]||[])];});
+  }else{
+    const ultimoDia=new Date(ano,mi+1,0).getDate();
+    const inicio=`${ano}-${String(mi+1).padStart(2,"0")}-01`;
+    const fim=`${ano}-${String(mi+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
+    const{data,error}=await supabaseClient.from("folgas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim);
+    if(error){avisoErro("Não foi possível carregar as folgas de "+MN[mi]+"/"+ano+".");}
+    (data||[]).forEach(r=>{
+      const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome||!(nome in base))return;
+      const dia=parseInt(r.data.split("-")[2],10);
+      base[nome].push(dia);
+    });
+  }
+  fsCache[chave]=base;
+  fsDias=base;
+}
+async function openFolgasMes(){
+  fsMes=gm();fsAno=cy;fsFunc=null;fsSetorAberto=null;fsCache={};
+  await fsCarregarMes(fsMes,fsAno);
   renderModalFolgas();
 }
 function renderModalFolgas(){
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
-    <h3>📅 Folgas de ${MN[fsMes]} ${fsAno}</h3>
-    <p class="msub">Selecione o setor e toque no funcionário para marcar as folgas.</p>`;
+    <h3>📅 Folgas</h3>
+    <p class="msub">Selecione o setor e toque no funcionário para marcar as folgas.</p>
+    <div class="cal-m-nav" style="margin-bottom:14px">
+      <button onclick="mudarFsMes(-1)">‹</button>
+      <span class="cal-m-title">${MN[fsMes]} ${fsAno}</span>
+      <button onclick="mudarFsMes(1)">›</button>
+    </div>`;
   Object.keys(EQ).forEach(k=>{
     const eq=EQ[k],aberto=fsSetorAberto===k;
     const total=eq.m.reduce((acc,g)=>acc+(fsDias[g]||[]).length,0);
@@ -1906,25 +1946,43 @@ function removerPeriodoFerias(nome,ini,fim){
   persistirRemoverAusenciasRange(nome,diasIso);
 }
 function toggleFsDia(d){if(!fsDias[fsFunc])fsDias[fsFunc]=[];const idx=fsDias[fsFunc].indexOf(d);if(idx>=0)fsDias[fsFunc].splice(idx,1);else fsDias[fsFunc].push(d);renderCalFunc();}
-function mudarFsMes(delta){fsMes+=delta;if(fsMes>11){fsMes=0;fsAno++;}if(fsMes<0){fsMes=11;fsAno--;}if(fsFunc)renderCalFunc();else renderModalFolgas();}
+async function mudarFsMes(delta){
+  fsMes+=delta;if(fsMes>11){fsMes=0;fsAno++;}if(fsMes<0){fsMes=11;fsAno--;}
+  await fsCarregarMes(fsMes,fsAno);
+  if(fsFunc)renderCalFunc();else renderModalFolgas();
+}
 async function salvarFolgas(){
-  const mi=gm();
-  if(!FOLGAS[mi])FOLGAS[mi]={};
-  const nomes=Object.keys(fsDias);
-  const diasAntigos={};
-  nomes.forEach(g=>{diasAntigos[g]=FOLGAS[mi][g]||[];});
-  nomes.forEach(g=>{FOLGAS[mi][g]=fsDias[g];});
-  // se um dia com folga vendida deixou de ser folga aqui, desfaz a venda também
-  // (senão o registro fica órfão e continua aparecendo no relatório de vendas)
-  nomes.forEach(g=>{
-    const diasRemovidos=diasAntigos[g].filter(d=>!fsDias[g].includes(d));
-    diasRemovidos.forEach(d=>{
-      if((FOLGAS_VENDIDAS[`${mi}_${d}`]||[]).includes(g)) desfazerVendaDeFolgaDados(g,d,mi);
-    });
-  });
-  cMod();if(dSel)renderEsc(dSel,mi);renderCal();
-  showToast("✅ Folgas de "+MN[mi]+" atualizadas!");
-  await Promise.all(nomes.map(g=>persistirFolgasFuncionario(g,mi,fsAno,fsDias[g])));
+  // Salva todos os meses visitados nesta abertura da tela (não só o mês
+  // atual) — navegar pra outro mês antes de clicar Salvar não descarta o
+  // que já tinha sido marcado em nenhum deles, tudo é persistido junto.
+  const chaves=Object.keys(fsCache);
+  cMod();if(dSel)renderEsc(dSel,cm);renderCal();
+  showToast(chaves.length<=1?"✅ Folgas de "+MN[fsMes]+" atualizadas!":"✅ Folgas atualizadas!");
+  await Promise.all(chaves.map(async chave=>{
+    const[anoStr,miStr]=chave.split("-");
+    const ano=parseInt(anoStr,10),mi=parseInt(miStr,10);
+    const dadosMes=fsCache[chave];
+    const nomes=Object.keys(dadosMes);
+    if(mi===cm&&ano===cy){
+      // mês ativo na tela principal — atualiza FOLGAS em memória na hora e
+      // desfaz venda de folga que porventura tenha ficado órfã. Essa checagem
+      // só é confiável aqui porque FOLGAS_VENDIDAS só fica carregado em
+      // memória pro mês ativo (carregarOperacional); editar folga vendida de
+      // outro mês por esta tela é um caso raro/aceito, não tratado agora.
+      const diasAntigos={};
+      nomes.forEach(g=>{diasAntigos[g]=(FOLGAS[cm]&&FOLGAS[cm][g])||[];});
+      if(!FOLGAS[cm])FOLGAS[cm]={};
+      nomes.forEach(g=>{FOLGAS[cm][g]=dadosMes[g];});
+      nomes.forEach(g=>{
+        const diasRemovidos=diasAntigos[g].filter(d=>!dadosMes[g].includes(d));
+        diasRemovidos.forEach(d=>{
+          if((FOLGAS_VENDIDAS[`${cm}_${d}`]||[]).includes(g)) desfazerVendaDeFolgaDados(g,d,cm);
+        });
+      });
+    }
+    await Promise.all(nomes.map(g=>persistirFolgasFuncionario(g,mi,ano,dadosMes[g])));
+  }));
+  fsCache={};
 }
 
 // HORÁRIOS ESPECIAIS FIXOS (recorrentes por dia da semana)
