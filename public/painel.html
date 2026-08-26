@@ -413,6 +413,7 @@ let NIVEL_ACESSO="master";
 let FUNC_ID_POR_NOME={};
 let CARGO_POR_NOME={};
 let DATA_INICIO_POR_NOME={};
+let DATA_SAIDA_POR_NOME={};
 let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
 // FJ: mapa dia_semana -> turno fechado ('todos'|'almoco'|'jantar'), vindo de
 // dias_fechados (configurado no onboarding, Passo 1 "Dias de funcionamento").
@@ -631,11 +632,26 @@ function jaComecou(n,d,mi){
   if(!inicio)return true;
   return ds2s(mi,d)>=inicio;
 }
+// Espelho de jaComecou pra "Data de saída": sem data cadastrada, nunca sai
+// (comportamento de sempre, intocado). Com data, deixa de estar ativo A
+// PARTIR dela (inclusive) — o funcionário continua existindo no cadastro/
+// histórico, só some da disponibilidade pra escala a partir desse dia.
+function jaSaiu(n,d,mi){
+  const saida=DATA_SAIDA_POR_NOME[n];
+  if(!saida)return false;
+  return ds2s(mi,d)>=saida;
+}
+// Ainda ativo nesse dia: já começou (jaComecou) e ainda não chegou na data de
+// saída (jaSaiu), se houver uma cadastrada. Reúne as duas datas num único
+// lugar pros pontos que precisam saber "essa pessoa existe pra escala nesse
+// dia" (sem se importar com folga/ausência/férias, que é outra checagem).
+function aindaAtivo(n,d,mi){return jaComecou(n,d,mi)&&!jaSaiu(n,d,mi);}
 // Disponibilidade real pra alocação num dia: não pode estar de folga/ausente/
-// férias (eFolga) E já precisa ter começado (jaComecou). Reúne as duas
-// checagens que hoje todo lugar que decide "quem pode ser escalado" precisa
-// fazer — eFolga continua com seu significado original, só de folga mesmo.
-function disponivelParaEscala(n,d,mi){return !eFolga(n,d,mi)&&jaComecou(n,d,mi);}
+// férias (eFolga) E precisa estar ativo (aindaAtivo — já começou e ainda não
+// saiu). Reúne as checagens que hoje todo lugar que decide "quem pode ser
+// escalado" precisa fazer — eFolga continua com seu significado original, só
+// de folga mesmo.
+function disponivelParaEscala(n,d,mi){return !eFolga(n,d,mi)&&aindaAtivo(n,d,mi);}
 function gDisp(d,mi,k){return EQ[k].m.filter(g=>disponivelParaEscala(g,d,mi));}
 function calcPax(mi,d,tu){
   const dn=dnom(mi,d),ds=ds2s(mi,d),fer=nFer(ds);
@@ -650,7 +666,7 @@ function tFolgas(d,mi){
   const vendidas=FOLGAS_VENDIDAS[`${mi}_${d}`]||[];
   Object.keys(EQ).forEach(k=>{
     const emF=EQ[k].m.filter(g=>{
-      if(!jaComecou(g,d,mi))return false;
+      if(!aindaAtivo(g,d,mi))return false;
       if(ausentes.includes(g))return false;
       if((FERIAS[mi]||[]).includes(g))return false;
       if(vendidas.includes(g))return false;
@@ -1263,7 +1279,7 @@ function renderEsc(d,mi){
   const folgasVendidas=getFolgasVendidas(d,mi);
   // funcionários de folga nesse dia que podem vender
   const todosDeFolga=Object.keys(EQ).flatMap(k=>EQ[k].m.filter(g=>{
-    if(!jaComecou(g,d,mi))return false;
+    if(!aindaAtivo(g,d,mi))return false;
     if((FERIAS[mi]||[]).includes(g))return false;
     if((AUSENCIAS[`${mi}_${d}`]||[]).includes(g))return false;
     return(FOLGAS[mi]&&FOLGAS[mi][g])?FOLGAS[mi][g].includes(d):false;
@@ -2197,6 +2213,7 @@ function renderConfigFuncionarios(){
   const setorIni=editando?Object.keys(EQ).find(k=>EQ[k].m.includes(editando.nome))||"":"";
   const pracaIni=editando?((PD.find(p=>(p.gc||[]).includes(editando.nome))||{}).id||""):"";
   const dataInicioIni=editando?(DATA_INICIO_POR_NOME[editando.nome]||""):"";
+  const dataSaidaIni=editando?(DATA_SAIDA_POR_NOME[editando.nome]||""):"";
   h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
     <div class="sec-title" style="margin-bottom:8px">${editando?"✏️ Editar funcionário":"+ Adicionar funcionário"}</div>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
@@ -2210,6 +2227,9 @@ function renderConfigFuncionarios(){
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Data de início (opcional)</label>
     <input id="nf-data-inicio" type="date" class="msel" style="margin-bottom:12px" value="${dataInicioIni}">
     <p class="msub" style="margin-top:-6px">Em branco, fica disponível pra escala desde já. Preenchida, só aparece como opção a partir dessa data.</p>
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Data de saída (opcional)</label>
+    <input id="nf-data-saida" type="date" class="msel" style="margin-bottom:12px" value="${dataSaidaIni}">
+    <p class="msub" style="margin-top:-6px">Em branco, continua disponível normalmente. Preenchida, deixa de aparecer como opção pra escala a partir dessa data — o cadastro (histórico, relatórios) não é afetado.</p>
     <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="${editando?"salvarEdicaoFuncionario()":"adicionarFuncionario()"}">${editando?"Salvar alterações":"+ Adicionar"}</button>
     ${editando?`<button style="width:100%;padding:8px;border-radius:var(--rs);border:none;background:transparent;color:var(--text2);font-weight:600;cursor:pointer;font-family:inherit;margin-top:6px" onclick="window._funcEditando=null;renderConfigFuncionarios()">Cancelar edição</button>`:""}
   </div>
@@ -2223,11 +2243,12 @@ async function adicionarFuncionario(){
   const setorChave=document.getElementById("nf-setor").value;
   const pracaId=document.getElementById("nf-praca").value;
   const dataInicio=document.getElementById("nf-data-inicio").value;
+  const dataSaida=document.getElementById("nf-data-saida").value;
   if(!nome){avisoErro("Informe o nome do funcionário.");return;}
   const setorId=EQ[setorChave]&&EQ[setorChave].id;
   if(!setorId){avisoErro("Setor inválido.");return;}
   const{error}=await supabaseClient.from("funcionarios").insert({
-    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,
+    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
   });
   if(error){avisoErro("Não foi possível adicionar "+nome+".");return;}
   showToast("✅ "+nome+" adicionado(a)!");
@@ -2253,11 +2274,12 @@ async function salvarEdicaoFuncionario(){
   const setorChave=document.getElementById("nf-setor").value;
   const pracaId=document.getElementById("nf-praca").value;
   const dataInicio=document.getElementById("nf-data-inicio").value;
+  const dataSaida=document.getElementById("nf-data-saida").value;
   if(!nome){avisoErro("Informe o nome do funcionário.");return;}
   const setorId=EQ[setorChave]&&EQ[setorChave].id;
   if(!setorId){avisoErro("Setor inválido.");return;}
   const{error}=await supabaseClient.from("funcionarios").update({
-    nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,
+    nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
   }).eq("id",editando.id);
   if(error){avisoErro("Não foi possível salvar as alterações de "+editando.nome+".");return;}
   showToast("✅ "+nome+" atualizado(a)!");
@@ -3666,11 +3688,11 @@ async function removerMenuEvento(id){
 async function carregarEquipeEPracas(){
   const{data:setoresRows}=await supabaseClient
     .from("setores")
-    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio)")
+    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio,data_saida)")
     .eq("restaurante_id",RESTAURANTE_ID)
     .order("ordem");
 
-  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};DATA_INICIO_POR_NOME={};
+  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};DATA_INICIO_POR_NOME={};DATA_SAIDA_POR_NOME={};
   const pracaPreferidaPorFuncionario={};
   (setoresRows||[]).forEach(s=>{
     EQ[s.chave]={id:s.id,l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,m:[]};
@@ -3679,6 +3701,7 @@ async function carregarEquipeEPracas(){
       FUNC_ID_POR_NOME[f.nome]=f.id;
       if(f.cargo)CARGO_POR_NOME[f.nome]=f.cargo;
       if(f.data_inicio)DATA_INICIO_POR_NOME[f.nome]=f.data_inicio;
+      if(f.data_saida)DATA_SAIDA_POR_NOME[f.nome]=f.data_saida;
       if(f.praca_preferencial_id){
         if(!pracaPreferidaPorFuncionario[f.praca_preferencial_id])pracaPreferidaPorFuncionario[f.praca_preferencial_id]=[];
         pracaPreferidaPorFuncionario[f.praca_preferencial_id].push(f.nome);
