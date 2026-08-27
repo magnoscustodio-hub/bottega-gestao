@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>GestãoSalão — Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F0EDE8;--surface:#FFFFFF;--surface2:#F7F4F0;
+  --border:#E8E2DA;--border-s:#D4CBC0;
+  --text:#1A1410;--text2:#6B5F52;--text3:#A89880;
+  --green:#1A6B3C;--green-bg:#E8F5EE;--green-br:#A8D8BC;
+  --red:#B02020;--red-bg:#FEF0EE;--red-br:#E8A8A0;
+  --gold:#B5893A;--gold-bg:#FBF4E8;--gold-br:#E8D4A0;
+  --r:14px;--rs:10px;
+  --shadow:0 2px 8px rgba(0,0,0,.08);--shadow-md:0 4px 16px rgba(0,0,0,.12);
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
+.app{max-width:760px;margin:0 auto;padding:20px}
+h1{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px}
+.sub{font-size:13px;color:var(--text2);margin-bottom:20px}
+.card{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.stat-row{display:flex;gap:12px;margin-bottom:20px}
+.stat{flex:1;background:var(--surface);border:1.5px solid var(--border);border-radius:var(--r);padding:16px;text-align:center;box-shadow:var(--shadow)}
+.stat .n{font-size:28px;font-weight:900;color:var(--text)}
+.stat .l{font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+.sec-title{font-size:13px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin:24px 0 10px}
+.rest-nome{font-size:15px;font-weight:800;color:var(--text);margin-bottom:6px}
+.rest-row{font-size:12px;color:var(--text2);margin-bottom:3px;line-height:1.5}
+.rest-row b{color:var(--text);font-weight:700}
+.bdg{display:inline-block;font-size:11px;font-weight:800;padding:3px 10px;border-radius:20px;margin-top:6px}
+.bdg.ok{background:var(--green-bg);color:var(--green)}
+.bdg.wn{background:var(--gold-bg);color:var(--gold)}
+.bdg.dn{background:var(--red-bg);color:var(--red)}
+.btn-confirmar{margin-top:10px;width:100%;padding:10px;border-radius:var(--rs);border:none;background:var(--green);color:white;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
+.btn-confirmar:disabled{opacity:.5;cursor:default}
+.empty{color:var(--text3);font-size:13px;text-align:center;padding:20px}
+.key-form{max-width:360px;margin:80px auto;text-align:center}
+.key-form input{width:100%;font-size:15px;padding:12px 14px;border-radius:var(--rs);border:1.5px solid var(--border);margin:14px 0;font-family:inherit}
+.key-form button{width:100%;padding:12px;border-radius:var(--rs);border:none;background:var(--text);color:white;font-weight:700;cursor:pointer;font-family:inherit}
+.erro{background:var(--red-bg);border:1.5px solid var(--red-br);color:var(--red);border-radius:var(--rs);padding:10px 14px;font-size:13px;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <div class="empty">Carregando...</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const supabaseClient = window.supabase.createClient(
+  'https://ufsdmlyrbkvgrlemvzde.supabase.co',
+  'sb_publishable_ylatUIjLh_w05QXuW0ORYQ_adC3-mvp'
+);
+
+// A "autenticação" desta página é só a chave na URL (?key=), repassada como
+// header x-admin-secret pra Edge Function admin-dados — que é quem de fato
+// confere o segredo e só ela enxerga todos os restaurantes (o cliente aqui
+// não tem sessão nenhuma, então RLS bloquearia tudo se a leitura fosse direta).
+let ADMIN_KEY=new URLSearchParams(location.search).get('key')||localStorage.getItem('admin_key')||'';
+
+function fmtData(iso){
+  if(!iso)return '—';
+  const d=new Date(iso);
+  return d.toLocaleDateString('pt-BR');
+}
+function badgeTrial(dias){
+  if(dias===null)return '';
+  if(dias<0)return `<span class="bdg dn">Trial vencido há ${Math.abs(dias)}d</span>`;
+  if(dias<=5)return `<span class="bdg wn">${dias}d restantes</span>`;
+  return `<span class="bdg ok">${dias}d restantes</span>`;
+}
+
+async function chamarAdmin(action,extra){
+  const{data,error}=await supabaseClient.functions.invoke('admin-dados',{
+    body:{action,...(extra||{})},
+    headers:{'x-admin-secret':ADMIN_KEY},
+  });
+  if(error||data?.error) throw new Error(data?.error||'Não foi possível falar com o servidor.');
+  return data;
+}
+
+function renderPedirChave(msgErro){
+  document.getElementById('app').innerHTML=`
+    <div class="key-form">
+      <h1>🔐 Área administrativa</h1>
+      <p class="sub">Informe a chave de acesso.</p>
+      ${msgErro?`<div class="erro">${msgErro}</div>`:''}
+      <input type="password" id="inp-key" placeholder="Chave de acesso" value="${ADMIN_KEY||''}">
+      <button onclick="salvarChaveEEntrar()">Entrar</button>
+    </div>`;
+}
+function salvarChaveEEntrar(){
+  ADMIN_KEY=document.getElementById('inp-key').value.trim();
+  if(!ADMIN_KEY)return;
+  localStorage.setItem('admin_key',ADMIN_KEY);
+  carregar();
+}
+
+function renderLista(dados){
+  const restaurantes=dados.restaurantes||[];
+  const pendentes=dados.indicacoes_pendentes||[];
+  let h=`
+    <h1>🔐 Área administrativa</h1>
+    <p class="sub">GestãoSalão — visão geral de restaurantes cadastrados.</p>
+    <div class="stat-row">
+      <div class="stat"><div class="n">${dados.total}</div><div class="l">Restaurantes</div></div>
+      <div class="stat"><div class="n">${pendentes.length}</div><div class="l">Indicações pendentes</div></div>
+    </div>`;
+
+  h+=`<div class="sec-title">🎁 Indicações pendentes</div>`;
+  if(pendentes.length===0){
+    h+=`<div class="empty">Nenhuma indicação aguardando confirmação.</div>`;
+  } else {
+    pendentes.forEach(r=>{
+      h+=`<div class="card">
+        <div class="rest-nome">${r.nome||'—'}</div>
+        <div class="rest-row">Indicado por: <b>${r.indicante_nome||'—'}</b></div>
+        <div class="rest-row">Cidade: <b>${r.cidade||'—'}</b></div>
+        <div class="rest-row">Endereço: <b>${r.endereco||'—'}</b></div>
+        <div class="rest-row">Contato/WhatsApp: <b>${r.telefone||'—'}</b></div>
+        <div class="rest-row">Cadastrado em: <b>${fmtData(r.created_at)}</b></div>
+        <button class="btn-confirmar" id="btn-conf-${r.id}" onclick="confirmar('${r.id}')">✅ Confirmar indicação (+30 dias pro indicante)</button>
+      </div>`;
+    });
+  }
+
+  h+=`<div class="sec-title">📋 Todos os restaurantes</div>`;
+  if(restaurantes.length===0){
+    h+=`<div class="empty">Nenhum restaurante cadastrado ainda.</div>`;
+  } else {
+    restaurantes.forEach(r=>{
+      h+=`<div class="card">
+        <div class="rest-nome">${r.nome||'—'}</div>
+        <div class="rest-row">Cidade: <b>${r.cidade||'—'}</b></div>
+        <div class="rest-row">Endereço: <b>${r.endereco||'—'}</b></div>
+        <div class="rest-row">Contato/WhatsApp: <b>${r.telefone||'—'}</b></div>
+        <div class="rest-row">Cadastrado em: <b>${fmtData(r.created_at)}</b></div>
+        ${badgeTrial(r.dias_trial_restantes)}
+      </div>`;
+    });
+  }
+  document.getElementById('app').innerHTML=h;
+}
+
+async function confirmar(id){
+  const btn=document.getElementById('btn-conf-'+id);
+  if(btn){btn.disabled=true;btn.textContent='Confirmando...';}
+  try{
+    await chamarAdmin('confirmar_indicacao',{restaurante_id:id});
+    await carregar();
+  }catch(e){
+    alert(e.message);
+    if(btn){btn.disabled=false;btn.textContent='✅ Confirmar indicação (+30 dias pro indicante)';}
+  }
+}
+
+async function carregar(){
+  if(!ADMIN_KEY){renderPedirChave();return;}
+  document.getElementById('app').innerHTML=`<div class="empty">Carregando...</div>`;
+  try{
+    const dados=await chamarAdmin('listar');
+    renderLista(dados);
+  }catch(e){
+    renderPedirChave(e.message);
+  }
+}
+carregar();
+</script>
+</body>
+</html>

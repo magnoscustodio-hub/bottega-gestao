@@ -437,6 +437,7 @@ let HISTORICO_FOLGAS_VENDIDAS=[];
 let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
 let RESTAURANTE_SLUG=null;
+let RESTAURANTE_CIDADE="",RESTAURANTE_ENDERECO="",RESTAURANTE_TELEFONE="";
 const _agora=new Date();
 let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
@@ -2199,6 +2200,7 @@ const MENU_SECOES=[
     {chave:"horarios",label:"Horários especiais",emoji:"⏰",fn:"openHorariosEspeciais()",cls:"edit-only"},
   ]},
   {titulo:"Configurações",itens:[
+    {chave:"dados",label:"Dados do restaurante",emoji:"🏠",fn:"abrirConfigDados()"},
     {chave:"funcionarios",label:"Funcionários",emoji:"👥",fn:"abrirConfigFuncionarios()"},
     {chave:"dias-funcionamento",label:"Dias de funcionamento",emoji:"🔒",fn:"abrirConfigDiasFuncionamento()"},
     {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
@@ -2444,6 +2446,72 @@ async function setTurnoFechadoConfig(dia,turno){
   if(dSel)renderEsc(dSel,gm());
 }
 
+// --- Dados do restaurante (nome/cidade/endereço/contato + link de indicação) ---
+function abrirConfigDados(){renderConfigDados();}
+function renderConfigDados(){
+  const link=linkIndicacao();
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
+    <div class="cal-modal-hd"><h3>🏠 Dados do restaurante</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
+    <div class="master-only">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
+      <input id="cd-nome" type="text" class="minp" value="${RESTAURANTE_NOME||""}">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cidade</label>
+      <input id="cd-cidade" type="text" class="minp" value="${RESTAURANTE_CIDADE||""}">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Endereço</label>
+      <input id="cd-endereco" type="text" class="minp" value="${RESTAURANTE_ENDERECO||""}">
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Contato/WhatsApp do gerente</label>
+      <input id="cd-telefone" type="text" class="minp" style="margin-bottom:12px" value="${RESTAURANTE_TELEFONE||""}">
+      <button class="bok" style="width:100%;padding:10px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarConfigDados()">Salvar alterações</button>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--rs);padding:12px;margin-top:16px;border:1.5px solid var(--border)">
+      <div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">🎁 Link de indicação</div>
+      <p class="msub" style="margin:0 0 10px">Indique outro restaurante — se o cadastro dele for confirmado, você ganha 30 dias a mais de acesso.</p>
+      ${link?`
+        <div style="background:var(--surface);border:1.5px solid var(--border-s);border-radius:var(--rs);padding:10px 12px;font-size:12px;color:var(--text2);word-break:break-all;margin-bottom:8px">${link}</div>
+        <button style="width:100%;padding:9px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700;font-size:12px" onclick="copiarLinkIndicacao()">📋 Copiar link</button>
+      `:`
+        <p style="font-size:12px;color:var(--text3);margin-bottom:8px">Gere um link único pro seu restaurante pra poder indicar.</p>
+        <button class="master-only" style="width:100%;padding:9px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-family:inherit;font-weight:700;font-size:12px" onclick="gerarLinkLoginEquipe(renderConfigDados,'✅ Link de indicação gerado!')">Gerar link</button>
+      `}
+    </div>
+    <div class="macts"><button onclick="abrirDrawer()">‹ Voltar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function salvarConfigDados(){
+  const nome=document.getElementById("cd-nome").value.trim();
+  const cidade=document.getElementById("cd-cidade").value.trim();
+  const endereco=document.getElementById("cd-endereco").value.trim();
+  const telefone=document.getElementById("cd-telefone").value.trim();
+  if(!nome){avisoErro("Informe o nome do restaurante.");return;}
+  const{error}=await supabaseClient.from("restaurantes").update({
+    nome,cidade:cidade||null,endereco:endereco||null,telefone:telefone||null,
+  }).eq("id",RESTAURANTE_ID);
+  if(error){avisoErro("Não foi possível salvar as alterações.");return;}
+  RESTAURANTE_NOME=nome;RESTAURANTE_CIDADE=cidade;RESTAURANTE_ENDERECO=endereco;RESTAURANTE_TELEFONE=telefone;
+  document.title=RESTAURANTE_NOME+" — Gestão de Salão";
+  const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
+  const sub=document.querySelector(".header-info p");if(sub)sub.textContent=RESTAURANTE_CIDADE+" · Gestão de Salão";
+  showToast("✅ Dados atualizados!");
+  renderConfigDados();
+}
+// Mesmo slug usado no link de login da equipe (Acessos) — um restaurante só
+// precisa de um slug único, seja qual for o propósito de cada link.
+function linkIndicacao(){
+  if(!RESTAURANTE_SLUG)return "";
+  const base=location.href.replace(/painel\.html.*$/,"");
+  return base+"onboarding.html?ref="+RESTAURANTE_SLUG;
+}
+function copiarLinkIndicacao(){
+  const link=linkIndicacao();
+  if(!link)return;
+  navigator.clipboard.writeText(link).then(()=>{
+    showToast("✅ Link copiado!");
+  }).catch(()=>{
+    avisoErro("Não foi possível copiar. Selecione o link manualmente.");
+  });
+}
+
 // --- Logo do restaurante ---
 function abrirConfigLogo(){renderConfigLogo();}
 function renderConfigLogo(){
@@ -2508,15 +2576,20 @@ function copiarLinkLoginEquipe(){
     avisoErro("Não foi possível copiar. Selecione o link manualmente.");
   });
 }
-async function gerarLinkLoginEquipe(){
+// aoTerminar: qual tela re-renderizar depois de gerar o slug — o mesmo slug
+// serve tanto pro link de login da equipe (tela Acessos) quanto pro link de
+// indicação (tela Dados do restaurante), então essa função é reaproveitada
+// pelas duas; default preserva o comportamento de sempre (chamada sem
+// argumento, só em Acessos).
+async function gerarLinkLoginEquipe(aoTerminar=renderConfigAcessos,msgSucesso="✅ Link de login gerado!"){
   const slugBase=gerarSlug(RESTAURANTE_NOME);
   for(let tentativa=0;tentativa<5;tentativa++){
     const slugTentativa=tentativa===0?slugBase:`${slugBase}-${tentativa+1}`;
     const{error}=await supabaseClient.from("restaurantes").update({slug:slugTentativa}).eq("id",RESTAURANTE_ID);
     if(!error){
       RESTAURANTE_SLUG=slugTentativa;
-      renderConfigAcessos();
-      showToast("✅ Link de login gerado!");
+      aoTerminar();
+      showToast(msgSucesso);
       return;
     }
     if(error.code!=="23505"){avisoErro("Não foi possível gerar o link.");return;}
@@ -3986,6 +4059,9 @@ async function boot(){
   RESTAURANTE_NOME=restaurante.nome;
   RESTAURANTE_LOGO_URL=restaurante.logo_url||null;
   RESTAURANTE_SLUG=restaurante.slug||null;
+  RESTAURANTE_CIDADE=restaurante.cidade||"";
+  RESTAURANTE_ENDERECO=restaurante.endereco||"";
+  RESTAURANTE_TELEFONE=restaurante.telefone||"";
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";
