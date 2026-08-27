@@ -335,6 +335,11 @@ const SETORES=[
   {k:'boqb',n:'Boqueta Bebida',e:'🥂',c:'#7C3AED'},
   {k:'boqc',n:'Boqueta Comida',e:'🍲',c:'#BA7517'},
   {k:'fax',n:'Faxina',e:'🧹',c:'#888780'},
+  // Sempre extra (sem headcount fixo, ninguém escala fixo aqui por padrão) —
+  // por isso nem aparece na etapa "Sua equipe" (ver renderEquipe) e é criada
+  // sempre, independente de quantidade (ver finalizarCadastro). Editável
+  // depois em Configurações — cada restaurante ajusta conforme a realidade.
+  {k:'esteril',n:'Esterilização',e:'🧴',c:'#2A7A6A',semprExtra:true,fimSemana:true},
 ];
 const MESES_NM=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
@@ -485,7 +490,10 @@ function renderDay(idx){
 
 function renderEquipe(){
   let h='';
-  SETORES.forEach(s=>{
+  // Setores "sempre extra" (ex: Esterilização) não têm headcount fixo por
+  // definição — pedir quantidade de funcionários pra eles não faz sentido
+  // aqui; são criados de qualquer jeito em finalizarCadastro().
+  SETORES.filter(s=>!s.semprExtra).forEach(s=>{
     const v=D.equipe[s.k];
     h+=`<div class="setor-card">
       <div class="setor-nm"><span class="sdot" style="background:${s.c}"></span>${s.e} ${s.n}</div>
@@ -847,11 +855,13 @@ async function finalizarCadastro(){
     if(restError) throw restError;
     const restauranteId=restaurante.id;
 
-    // Setores fixos + setores extras com equipe configurada
+    // Setores fixos + setores extras com equipe configurada. Setores
+    // "sempre extra" (Esterilização) são criados sempre, independente de
+    // quantidade — não têm headcount fixo por definição (ver renderEquipe).
     const setoresParaCriar=[];
     SETORES.forEach((s,i)=>{
-      if((D.equipe[s.k]||0)>0){
-        setoresParaCriar.push({restaurante_id:restauranteId,chave:s.k,nome:s.n,emoji:s.e,cor:s.c,ordem:i,_nomes:D.nomes[s.k]});
+      if((D.equipe[s.k]||0)>0||s.semprExtra){
+        setoresParaCriar.push({restaurante_id:restauranteId,chave:s.k,nome:s.n,emoji:s.e,cor:s.c,ordem:i,sempre_extra:!!s.semprExtra,fim_semana:!!s.fimSemana,_nomes:D.nomes[s.k]});
       }
     });
     D.setoresExtra.forEach((s,i)=>{
