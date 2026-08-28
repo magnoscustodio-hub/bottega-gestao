@@ -1489,7 +1489,7 @@ function renderEsc(d,mi){
       h+=`<div class="pc${extrasSempre.length===0?" px":""}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;flex-wrap:wrap;gap:4px">
           <div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c}"></span><span class="pn">${l}</span></div>
-          <span class="pc-icons">${extrasSempre.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button></span>
+          <span class="pc-icons">${extrasSempre.length===0?bdg("Extra","dn"):""}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button></span>
         </div>
         <div class="ps" style="margin-bottom:6px">Sempre extra${eq.fimSemana?" · fins de semana":""}</div>
         <div style="display:flex;flex-wrap:wrap;gap:2px">
@@ -1504,6 +1504,13 @@ function renderEsc(d,mi){
     const nativos=gDisp(d,mi,k).filter(g=>!alocadosNasPracas.has(g));
     const manualAqui=dist[k]||[];
     const disp=[...new Set([...nativos,...manualAqui])];
+    // nx = abaixo do mínimo configurado pra esse setor. Junto com "extras
+    // vazio", decide o badge "Extra" (chamando atenção pra precisar de
+    // reforço) — sem badge nenhum quando está tudo certo (min atingido ou
+    // já tem extra suprindo): informação positiva o tempo todo virava
+    // ruído visual disputando espaço com os ícones 🔒/✏️ no canto do card;
+    // o alerta vermelho ("Extra") já é reforçado pela borda esquerda
+    // vermelha do card (classe .px), então nada se perde tirando o "Ok".
     const nx=disp.length<eq.min;
     const extras=getExtras(k,d,mi);
     // "Lideranças" (maitre, chef de fila, supervisor...) ganha um acabamento
@@ -1544,7 +1551,7 @@ function renderEsc(d,mi){
     h+=`<div class="pc${nx&&extras.length===0?" px":""}" style="${cardStyle}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         ${cabecalho}
-        <span class="pc-icons">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${k}')" title="Editar ${l}">✏️</button></span>
+        <span class="pc-icons">${nx&&extras.length===0?bdg("Extra","dn"):""}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${k}')" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
       <div>${chipsHtml}${chipsExtrasHtml(extras,k,d,mi)}
