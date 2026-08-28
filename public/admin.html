@@ -36,6 +36,9 @@ h1{font-size:22px;font-weight:800;letter-spacing:-.3px;margin-bottom:4px}
 .bdg.dn{background:var(--red-bg);color:var(--red)}
 .btn-confirmar{margin-top:10px;width:100%;padding:10px;border-radius:var(--rs);border:none;background:var(--green);color:white;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
 .btn-confirmar:disabled{opacity:.5;cursor:default}
+.btn-row{display:flex;gap:8px;margin-top:10px}
+.btn-row .btn-confirmar{margin-top:0;flex:1}
+.btn-row .btn-confirmar.credito{background:var(--gold)}
 .empty{color:var(--text3);font-size:13px;text-align:center;padding:20px}
 .key-form{max-width:360px;margin:80px auto;text-align:center}
 .key-form input{width:100%;font-size:15px;padding:12px 14px;border-radius:var(--rs);border:1.5px solid var(--border);margin:14px 0;font-family:inherit}
@@ -66,11 +69,28 @@ function fmtData(iso){
   const d=new Date(iso);
   return d.toLocaleDateString('pt-BR');
 }
-function badgeTrial(dias){
+// Trial vencido + sem crédito = precisa de atenção de cobrança (destaque
+// forte, vermelho). Trial vencido + com crédito = coberto por enquanto
+// (destaque neutro, não precisa agir ainda, mas fica visível o consumo).
+// Ainda dentro do trial = badge de sempre (dias restantes).
+function badgeTrial(r){
+  const dias=r.dias_trial_restantes;
   if(dias===null)return '';
-  if(dias<0)return `<span class="bdg dn">Trial vencido há ${Math.abs(dias)}d</span>`;
+  if(dias<0){
+    const creditos=r.creditos_indicacao||0;
+    if(creditos>0)return `<span class="bdg wn">🎁 Coberto por ${creditos} ${creditos===1?'mês':'meses'} de crédito</span>`;
+    return `<span class="bdg dn">⚠️ Cobrar agora</span>`;
+  }
   if(dias<=5)return `<span class="bdg wn">${dias}d restantes</span>`;
   return `<span class="bdg ok">${dias}d restantes</span>`;
+}
+// 0=cobrar agora (mais urgente) · 1=coberto por crédito · 2=ainda em trial —
+// usado só pra ordenar a lista, nunca exibido.
+function prioridadeCobranca(r){
+  const dias=r.dias_trial_restantes;
+  if(dias===null)return 3;
+  if(dias<0)return (r.creditos_indicacao||0)>0?1:0;
+  return 2;
 }
 
 async function chamarAdmin(action,extra){
@@ -122,7 +142,10 @@ function renderLista(dados){
         <div class="rest-row">Endereço: <b>${r.endereco||'—'}</b></div>
         <div class="rest-row">Contato/WhatsApp: <b>${r.telefone||'—'}</b></div>
         <div class="rest-row">Cadastrado em: <b>${fmtData(r.created_at)}</b></div>
-        <button class="btn-confirmar" id="btn-conf-${r.id}" onclick="confirmar('${r.id}')">✅ Confirmar indicação (+30 dias pro indicante)</button>
+        <div class="btn-row" id="btn-row-${r.id}">
+          <button class="btn-confirmar" onclick="confirmar('${r.id}','trial')">🕐 +30 dias de trial</button>
+          <button class="btn-confirmar credito" onclick="confirmar('${r.id}','credito')">🎁 +1 mês de crédito</button>
+        </div>
       </div>`;
     });
   }
@@ -131,29 +154,35 @@ function renderLista(dados){
   if(restaurantes.length===0){
     h+=`<div class="empty">Nenhum restaurante cadastrado ainda.</div>`;
   } else {
-    restaurantes.forEach(r=>{
+    // Quem precisa de cobrança agora sempre no topo, pra nunca passar batido
+    // conforme a base cresce (ver prioridadeCobranca).
+    [...restaurantes].sort((a,b)=>prioridadeCobranca(a)-prioridadeCobranca(b)).forEach(r=>{
       h+=`<div class="card">
         <div class="rest-nome">${r.nome||'—'}</div>
         <div class="rest-row">Cidade: <b>${r.cidade||'—'}</b></div>
         <div class="rest-row">Endereço: <b>${r.endereco||'—'}</b></div>
         <div class="rest-row">Contato/WhatsApp: <b>${r.telefone||'—'}</b></div>
         <div class="rest-row">Cadastrado em: <b>${fmtData(r.created_at)}</b></div>
-        ${badgeTrial(r.dias_trial_restantes)}
+        ${badgeTrial(r)}
       </div>`;
     });
   }
   document.getElementById('app').innerHTML=h;
 }
 
-async function confirmar(id){
-  const btn=document.getElementById('btn-conf-'+id);
-  if(btn){btn.disabled=true;btn.textContent='Confirmando...';}
+async function confirmar(id,tipo){
+  const row=document.getElementById('btn-row-'+id);
+  const botoes=row?row.querySelectorAll('button'):[];
+  botoes.forEach(b=>{b.disabled=true;});
+  const btnClicado=[...botoes].find(b=>b.onclick&&b.getAttribute('onclick').includes(`'${tipo}'`));
+  if(btnClicado)btnClicado.textContent='Confirmando...';
   try{
-    await chamarAdmin('confirmar_indicacao',{restaurante_id:id});
+    await chamarAdmin('confirmar_indicacao',{restaurante_id:id,tipo});
     await carregar();
   }catch(e){
     alert(e.message);
-    if(btn){btn.disabled=false;btn.textContent='✅ Confirmar indicação (+30 dias pro indicante)';}
+    botoes.forEach(b=>{b.disabled=false;});
+    if(btnClicado)btnClicado.textContent=tipo==='trial'?'🕐 +30 dias de trial':'🎁 +1 mês de crédito';
   }
 }
 

@@ -14,7 +14,11 @@
 //
 // Ações suportadas (campo "action" no corpo da requisição):
 //   - "listar":               {} -> lista completa + contagem + indicações pendentes
-//   - "confirmar_indicacao":  { restaurante_id }
+//   - "confirmar_indicacao":  { restaurante_id, tipo }
+//       tipo="trial":   +30 dias no trial_fim do indicante (quem ainda está em trial)
+//       tipo="credito": +1 em creditos_indicacao do indicante (quem já é pagante)
+//       Sem default de propósito — o admin escolhe manualmente qual dar a
+//       cada confirmação, dependendo da situação de quem indicou.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -59,7 +63,7 @@ Deno.serve(async (req: Request) => {
     if (action === 'listar') {
       const { data: restaurantes, error: listError } = await admin
         .from('restaurantes')
-        .select('id, nome, cidade, endereco, telefone, slug, created_at, trial_fim, indicado_por, indicacao_confirmada')
+        .select('id, nome, cidade, endereco, telefone, slug, created_at, trial_fim, indicado_por, indicacao_confirmada, creditos_indicacao')
         .order('created_at', { ascending: false })
       if (listError) return erro('Não foi possível carregar os restaurantes: ' + listError.message)
 
@@ -77,8 +81,9 @@ Deno.serve(async (req: Request) => {
     }
 
     if (action === 'confirmar_indicacao') {
-      const { restaurante_id } = body
+      const { restaurante_id, tipo } = body
       if (!restaurante_id) return erro('Informe o restaurante.')
+      if (tipo !== 'trial' && tipo !== 'credito') return erro('Informe o tipo de recompensa: "trial" (+30 dias) ou "credito" (+1 mês).')
 
       const { data: indicado } = await admin
         .from('restaurantes')
@@ -89,12 +94,12 @@ Deno.serve(async (req: Request) => {
       if (!indicado.indicado_por) return erro('Esse restaurante não tem indicação registrada.')
       if (indicado.indicacao_confirmada) return erro('Essa indicação já foi confirmada antes.')
 
-      // Marca como confirmada ANTES de somar os 30 dias, e de forma atômica
-      // (a condição indicacao_confirmada=false vai dentro do próprio update,
-      // não numa checagem separada antes) — evita que dois cliques em
-      // "Confirmar" quase simultâneos concedam os 30 dias duas vezes. Se essa
-      // atualização não afetar nenhuma linha, é porque outra requisição já
-      // confirmou entre a leitura acima e agora.
+      // Marca como confirmada ANTES de conceder a recompensa, e de forma
+      // atômica (a condição indicacao_confirmada=false vai dentro do próprio
+      // update, não numa checagem separada antes) — evita que dois cliques
+      // em "Confirmar" quase simultâneos concedam a recompensa duas vezes.
+      // Se essa atualização não afetar nenhuma linha, é porque outra
+      // requisição já confirmou entre a leitura acima e agora.
       const { data: confirmados, error: updIndicadoError } = await admin
         .from('restaurantes')
         .update({ indicacao_confirmada: true })
@@ -106,19 +111,26 @@ Deno.serve(async (req: Request) => {
 
       const { data: indicante } = await admin
         .from('restaurantes')
-        .select('id, trial_fim')
+        .select('id, trial_fim, creditos_indicacao')
         .eq('id', indicado.indicado_por)
         .maybeSingle()
-      if (!indicante) return erro('Indicação confirmada, mas o restaurante indicante não foi encontrado (pode ter sido removido) — trial não estendido.')
+      if (!indicante) return erro('Indicação confirmada, mas o restaurante indicante não foi encontrado (pode ter sido removido) — recompensa não concedida.')
 
-      const baseAtual = indicante.trial_fim ? new Date(indicante.trial_fim).getTime() : Date.now()
-      const novoTrialFim = new Date(baseAtual + 30 * DIA_MS).toISOString()
-
-      const { error: updIndicanteError } = await admin
-        .from('restaurantes')
-        .update({ trial_fim: novoTrialFim })
-        .eq('id', indicante.id)
-      if (updIndicanteError) return erro('Indicação confirmada, mas não foi possível estender o trial do indicante: ' + updIndicanteError.message)
+      if (tipo === 'trial') {
+        const baseAtual = indicante.trial_fim ? new Date(indicante.trial_fim).getTime() : Date.now()
+        const novoTrialFim = new Date(baseAtual + 30 * DIA_MS).toISOString()
+        const { error: updIndicanteError } = await admin
+          .from('restaurantes')
+          .update({ trial_fim: novoTrialFim })
+          .eq('id', indicante.id)
+        if (updIndicanteError) return erro('Indicação confirmada, mas não foi possível estender o trial do indicante: ' + updIndicanteError.message)
+      } else {
+        const { error: updIndicanteError } = await admin
+          .from('restaurantes')
+          .update({ creditos_indicacao: (indicante.creditos_indicacao || 0) + 1 })
+          .eq('id', indicante.id)
+        if (updIndicanteError) return erro('Indicação confirmada, mas não foi possível conceder o crédito ao indicante: ' + updIndicanteError.message)
+      }
 
       return jsonResponse({ ok: true })
     }
