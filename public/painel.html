@@ -206,6 +206,14 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .pc:hover{box-shadow:var(--shadow-md)}
 .pn{font-size:12px;font-weight:800;color:var(--text);margin-bottom:2px}
 .ps{font-size:10px;color:var(--text3);margin-bottom:8px;font-weight:500}
+/* Ícones de ação no canto do card (🔒 fechar / ✏️ editar) — tamanho fixo
+   (não só font-size) pra emoji não empurrar o layout em telas/fontes
+   diferentes, e flex-shrink:0 pra nunca serem espremidos abaixo do
+   tamanho normal quando o nome da praça/área é longo. O .pc-icons pai
+   também aceita quebrar linha (flex-wrap:wrap) como último recurso em
+   cards muito estreitos, em vez de arriscar sobreposição. */
+.pc-icons{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.icon-btn{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1}
 
 /* INPUT RESERVAS */
 .rinp{width:72px;font-size:16px;font-weight:800;padding:6px 8px;border-radius:var(--rs);border:2px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);text-align:center;font-family:inherit;box-shadow:var(--shadow)}
@@ -1425,7 +1433,7 @@ function renderEsc(d,mi){
       return;
     }
     h+=`<div class="pc${p.pref?" pp":nx&&extras.length===0?" px":""}">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span style="display:flex;align-items:center;gap:6px">${p.pref?bdg("pref","in"):""}<button class="edit-only" onclick="toggleAreaFechada('${p.id}',${d},${mi})" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Fechar ${p.n} hoje">🔒</button><button class="edit-only" onclick="openEditarEscala(${d},${mi},'${p.id}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${p.n}">✏️</button></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span class="pc-icons">${p.pref?bdg("pref","in"):""}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${p.id}',${d},${mi})" title="Fechar ${p.n} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${p.id}')" title="Editar ${p.n}">✏️</button></span></div>
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
@@ -1481,7 +1489,7 @@ function renderEsc(d,mi){
       h+=`<div class="pc${extrasSempre.length===0?" px":""}">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;flex-wrap:wrap;gap:4px">
           <div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c}"></span><span class="pn">${l}</span></div>
-          <span style="display:flex;align-items:center;gap:6px">${extrasSempre.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Fechar ${l} hoje">🔒</button></span>
+          <span class="pc-icons">${extrasSempre.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button></span>
         </div>
         <div class="ps" style="margin-bottom:6px">Sempre extra${eq.fimSemana?" · fins de semana":""}</div>
         <div style="display:flex;flex-wrap:wrap;gap:2px">
@@ -1536,7 +1544,7 @@ function renderEsc(d,mi){
     h+=`<div class="pc${nx&&extras.length===0?" px":""}" style="${cardStyle}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
         ${cabecalho}
-        <span style="display:flex;align-items:center;gap:6px">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Fechar ${l} hoje">🔒</button><button class="edit-only" onclick="openEditarEscala(${d},${mi},'${k}')" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;line-height:1" title="Editar ${l}">✏️</button></span>
+        <span class="pc-icons">${nx&&extras.length===0?bdg("Extra","dn"):bdg("Ok","ok")}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${k}')" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
       <div>${chipsHtml}${chipsExtrasHtml(extras,k,d,mi)}
