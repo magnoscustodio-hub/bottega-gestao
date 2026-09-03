@@ -448,7 +448,7 @@ let HISTORICO_FOLGAS_VENDIDAS=[];
 let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
 let RESTAURANTE_SLUG=null;
-let RESTAURANTE_CIDADE="",RESTAURANTE_ENDERECO="",RESTAURANTE_TELEFONE="";
+let RESTAURANTE_CIDADE="",RESTAURANTE_ENDERECO="",RESTAURANTE_TELEFONE="",RESTAURANTE_UF="";
 const _agora=new Date();
 let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
@@ -1188,6 +1188,155 @@ function salvarEscalaManual(d,mi){
   showToast("✅ Escala do dia atualizada!");
 }
 
+// --- Previsão do tempo (card da Home, ao lado/abaixo da Agenda) ---
+// Puramente informativo, por pedido explícito: só mostra o dado bruto
+// (temperatura + condição), nunca sugere nada em cima disso (sem "reforce
+// a equipe", sem alerta de movimento esperado). Usa a API pública e sem
+// chave do Open-Meteo (https://open-meteo.com/) — geocoding (cidade/UF →
+// coordenadas) e previsão diária, os dois com CORS liberado pra chamada
+// direta do navegador, sem precisar de Edge Function.
+//
+// Códigos de tempo (WMO) → emoji/texto em português. Tabela padrão do
+// próprio Open-Meteo (https://open-meteo.com/en/docs), fixa igual às
+// outras tabelas de mapeamento já existentes neste arquivo (AG_TIPOS etc).
+const WMO_CLIMA={
+  0:{e:"☀️",l:"Céu limpo"},1:{e:"🌤️",l:"Predom. limpo"},2:{e:"⛅",l:"Parc. nublado"},3:{e:"☁️",l:"Nublado"},
+  45:{e:"🌫️",l:"Neblina"},48:{e:"🌫️",l:"Neblina"},
+  51:{e:"🌦️",l:"Garoa fraca"},53:{e:"🌦️",l:"Garoa"},55:{e:"🌦️",l:"Garoa forte"},
+  56:{e:"🌧️",l:"Garoa gelada"},57:{e:"🌧️",l:"Garoa gelada"},
+  61:{e:"🌧️",l:"Chuva fraca"},63:{e:"🌧️",l:"Chuva"},65:{e:"🌧️",l:"Chuva forte"},
+  66:{e:"🌧️",l:"Chuva gelada"},67:{e:"🌧️",l:"Chuva gelada"},
+  71:{e:"🌨️",l:"Neve fraca"},73:{e:"🌨️",l:"Neve"},75:{e:"🌨️",l:"Neve forte"},77:{e:"🌨️",l:"Grãos de neve"},
+  80:{e:"🌧️",l:"Pancada de chuva"},81:{e:"🌧️",l:"Pancada de chuva"},82:{e:"🌧️",l:"Pancada forte"},
+  85:{e:"🌨️",l:"Pancada de neve"},86:{e:"🌨️",l:"Pancada de neve"},
+  95:{e:"⛈️",l:"Trovoada"},96:{e:"⛈️",l:"Trovoada c/ granizo"},99:{e:"⛈️",l:"Trovoada c/ granizo"},
+};
+function climaInfo(codigo){return WMO_CLIMA[codigo]||{e:"🌡️",l:"—"};}
+// UF → nome completo do estado, só pra bater com o campo "admin1" que a
+// geocodificação do Open-Meteo devolve (ela usa o nome por extenso, não a
+// sigla) — é como desambiguamos cidades homônimas em estados diferentes
+// quando o restaurante preencheu a UF.
+const UF_NOME_ESTADO={AC:"Acre",AL:"Alagoas",AP:"Amapá",AM:"Amazonas",BA:"Bahia",CE:"Ceará",DF:"Distrito Federal",
+  ES:"Espírito Santo",GO:"Goiás",MA:"Maranhão",MT:"Mato Grosso",MS:"Mato Grosso do Sul",MG:"Minas Gerais",
+  PA:"Pará",PB:"Paraíba",PR:"Paraná",PE:"Pernambuco",PI:"Piauí",RJ:"Rio de Janeiro",RN:"Rio Grande do Norte",
+  RS:"Rio Grande do Sul",RO:"Rondônia",RR:"Roraima",SC:"Santa Catarina",SP:"São Paulo",SE:"Sergipe",TO:"Tocantins"};
+
+function climaCacheKeyCoords(){return `clima_coords_${RESTAURANTE_ID}`;}
+function climaCacheKeyPrevisao(){return `clima_previsao_${RESTAURANTE_ID}`;}
+// Resolve cidade+UF → {lat,lon} via geocoding do Open-Meteo, com cache em
+// localStorage — só chama a API de novo se a cidade/UF salva mudou desde a
+// última vez (nome de cidade praticamente nunca muda, então isso evita
+// regeocodificar todo santo dia à toa). Retorna null em qualquer falha
+// (sem resultado, erro de rede) — nunca lança exceção, quem chama decide
+// simplesmente não mostrar o card.
+async function resolverCoordsRestaurante(){
+  const cidade=(RESTAURANTE_CIDADE||"").trim();
+  if(!cidade)return null;
+  const uf=(RESTAURANTE_UF||"").trim().toUpperCase();
+  try{
+    const cacheado=JSON.parse(localStorage.getItem(climaCacheKeyCoords())||"null");
+    if(cacheado&&cacheado.cidade===cidade&&cacheado.uf===uf&&cacheado.lat!=null){
+      return{lat:cacheado.lat,lon:cacheado.lon};
+    }
+  }catch(e){}
+  try{
+    const url=`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cidade)}&count=10&language=pt&format=json&country_code=BR`;
+    const resp=await fetch(url);
+    if(!resp.ok)return null;
+    const dados=await resp.json();
+    const resultados=dados.results||[];
+    if(resultados.length===0)return null;
+    // Com UF preenchida, prioriza o resultado cujo estado bate (admin1 vem
+    // por extenso, ex: "São Paulo") — sem UF, ou sem bater nenhum, fica com
+    // o primeiro (o Open-Meteo já ordena por relevância/população).
+    const nomeEstado=UF_NOME_ESTADO[uf];
+    const escolhido=(nomeEstado&&resultados.find(r=>r.admin1===nomeEstado))||resultados[0];
+    const coords={lat:escolhido.latitude,lon:escolhido.longitude};
+    try{localStorage.setItem(climaCacheKeyCoords(),JSON.stringify({cidade,uf,...coords}));}catch(e){}
+    return coords;
+  }catch(e){return null;}
+}
+// Previsão de hoje + próximos 3 dias, com cache em localStorage por dia —
+// só busca de novo se o cache não é de hoje (o pedido explícito de "1x por
+// dia, não a cada carregamento de tela"). Retorna null em qualquer falha.
+async function obterPrevisaoTempo(){
+  const hojeIso=new Date().toISOString().slice(0,10);
+  try{
+    const cacheado=JSON.parse(localStorage.getItem(climaCacheKeyPrevisao())||"null");
+    if(cacheado&&cacheado.data===hojeIso)return cacheado.previsao;
+  }catch(e){}
+  const coords=await resolverCoordsRestaurante();
+  if(!coords)return null;
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&daily=weathercode,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=4`;
+    const resp=await fetch(url);
+    if(!resp.ok)return null;
+    const dados=await resp.json();
+    const diario=dados.daily;
+    if(!diario||!diario.time||diario.time.length===0)return null;
+    const dias=diario.time.map((data,i)=>({
+      data,
+      codigo:diario.weathercode[i],
+      tempMax:Math.round(diario.temperature_2m_max[i]),
+      tempMin:Math.round(diario.temperature_2m_min[i]),
+    }));
+    const previsao={atual:dias[0],proximos:dias.slice(1,4)};
+    try{localStorage.setItem(climaCacheKeyPrevisao(),JSON.stringify({data:hojeIso,previsao}));}catch(e){}
+    return previsao;
+  }catch(e){return null;}
+}
+function climaCardHtml(previsao){
+  const dn=new Date(previsao.atual.data+"T12:00:00");
+  const hojeInfo=climaInfo(previsao.atual.codigo);
+  const localTxt=[RESTAURANTE_CIDADE,RESTAURANTE_UF].filter(Boolean).join("/");
+  const proximosHtml=previsao.proximos.map(p=>{
+    const info=climaInfo(p.codigo);
+    const diaAbrev=new Date(p.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","");
+    return `<div style="flex:1;text-align:center;background:var(--surface2);border-radius:var(--rs);padding:8px 4px">
+      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">${diaAbrev}</div>
+      <div style="font-size:20px;margin:4px 0">${info.e}</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text)">${p.tempMax}°</div>
+      <div style="font-size:10px;color:var(--text3)">${p.tempMin}°</div>
+    </div>`;
+  }).join("");
+  return `<div class="esc" style="margin-top:12px">
+    <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%);display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:16px;font-weight:800;color:white">🌡️ Previsão do tempo</div>
+        ${localTxt?`<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">${localTxt}</div>`:""}
+      </div>
+    </div>
+    <div style="padding:14px 16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <div style="font-size:36px;line-height:1">${hojeInfo.e}</div>
+        <div>
+          <div style="font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.3px">${previsao.atual.tempMax}° <span style="color:var(--text3);font-weight:700">/ ${previsao.atual.tempMin}°</span></div>
+          <div style="font-size:12px;color:var(--text2);font-weight:600">${hojeInfo.l} — hoje</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px">${proximosHtml}</div>
+    </div>
+  </div>`;
+}
+// Chamado a partir de renderEmpty() de forma assíncrona, depois da Agenda já
+// ter sido desenhada — nunca atrasa nem trava o resto da Home. Se a busca
+// falhar em qualquer etapa (sem cidade cadastrada, geocoding sem resultado,
+// API fora do ar), o container simplesmente fica vazio: card não aparece,
+// sem mensagem de erro, sem quebrar nada em volta.
+async function atualizarCardClima(){
+  const container=document.getElementById("clima-card");
+  if(!container)return; // Home já não está mais aberta (usuário navegou antes da resposta chegar)
+  try{
+    const previsao=await obterPrevisaoTempo();
+    const containerAtual=document.getElementById("clima-card"); // reconfirma: pode ter saído da Home enquanto esperava a resposta
+    if(!containerAtual)return;
+    containerAtual.innerHTML=previsao?climaCardHtml(previsao):"";
+  }catch(e){
+    const containerAtual=document.getElementById("clima-card");
+    if(containerAtual)containerAtual.innerHTML="";
+  }
+}
+
 function renderEmpty(){
   const hoje=agHoje();
   // Agenda é agenda, Evento é evento: o widget da Home não mostra Eventos
@@ -1248,7 +1397,13 @@ function renderEmpty(){
     <div style="padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border)">
       <div style="text-align:center;color:var(--text3);font-size:12px">📅 Toque em um dia para ver a escala</div>
     </div>
-  </div>`;
+  </div>
+  <div id="clima-card"></div>`;
+  // Assíncrono de propósito: a Agenda acima já está desenhada e interativa
+  // antes da previsão do tempo sequer começar a buscar — nunca atrasa a
+  // Home. #clima-card começa vazio (nada aparece) até a resposta chegar (ou
+  // pra sempre, se falhar/não tiver cidade cadastrada).
+  atualizarCardClima();
 }
 
 function renderEsc(d,mi){
@@ -2499,8 +2654,16 @@ function renderConfigDados(){
     <div class="master-only">
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
       <input id="cd-nome" type="text" class="minp" value="${RESTAURANTE_NOME||""}">
-      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cidade</label>
-      <input id="cd-cidade" type="text" class="minp" value="${RESTAURANTE_CIDADE||""}">
+      <div style="display:grid;grid-template-columns:1fr 70px;gap:10px">
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Cidade</label>
+          <input id="cd-cidade" type="text" class="minp" value="${RESTAURANTE_CIDADE||""}">
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">UF</label>
+          <input id="cd-uf" type="text" class="minp" maxlength="2" style="text-transform:uppercase" value="${RESTAURANTE_UF||""}">
+        </div>
+      </div>
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Endereço</label>
       <input id="cd-endereco" type="text" class="minp" value="${RESTAURANTE_ENDERECO||""}">
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Contato/WhatsApp do gerente</label>
@@ -2525,14 +2688,15 @@ function renderConfigDados(){
 async function salvarConfigDados(){
   const nome=document.getElementById("cd-nome").value.trim();
   const cidade=document.getElementById("cd-cidade").value.trim();
+  const uf=document.getElementById("cd-uf").value.trim().toUpperCase();
   const endereco=document.getElementById("cd-endereco").value.trim();
   const telefone=document.getElementById("cd-telefone").value.trim();
   if(!nome){avisoErro("Informe o nome do restaurante.");return;}
   const{error}=await supabaseClient.from("restaurantes").update({
-    nome,cidade:cidade||null,endereco:endereco||null,telefone:telefone||null,
+    nome,cidade:cidade||null,uf:uf||null,endereco:endereco||null,telefone:telefone||null,
   }).eq("id",RESTAURANTE_ID);
   if(error){avisoErro("Não foi possível salvar as alterações.");return;}
-  RESTAURANTE_NOME=nome;RESTAURANTE_CIDADE=cidade;RESTAURANTE_ENDERECO=endereco;RESTAURANTE_TELEFONE=telefone;
+  RESTAURANTE_NOME=nome;RESTAURANTE_CIDADE=cidade;RESTAURANTE_UF=uf;RESTAURANTE_ENDERECO=endereco;RESTAURANTE_TELEFONE=telefone;
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=RESTAURANTE_CIDADE+" · Gestão de Salão";
@@ -4114,6 +4278,7 @@ async function boot(){
   RESTAURANTE_CIDADE=restaurante.cidade||"";
   RESTAURANTE_ENDERECO=restaurante.endereco||"";
   RESTAURANTE_TELEFONE=restaurante.telefone||"";
+  RESTAURANTE_UF=restaurante.uf||"";
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";

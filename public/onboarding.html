@@ -188,9 +188,15 @@ input::placeholder{color:var(--text3)}
       <label class="field-label">Nome do restaurante</label>
       <input type="text" id="inp-nome" placeholder="Ex: Trattoria del Marco" autocomplete="off">
     </div>
-    <div class="field-group">
-      <label class="field-label">Cidade</label>
-      <input type="text" id="inp-cidade" placeholder="Ex: São Paulo" autocomplete="off">
+    <div class="field-group" style="display:grid;grid-template-columns:1fr 90px;gap:10px">
+      <div>
+        <label class="field-label">Cidade</label>
+        <input type="text" id="inp-cidade" placeholder="Ex: São Paulo" autocomplete="off">
+      </div>
+      <div>
+        <label class="field-label">UF</label>
+        <input type="text" id="inp-uf" placeholder="SP" maxlength="2" autocomplete="off" style="text-transform:uppercase">
+      </div>
     </div>
     <div class="field-group">
       <label class="field-label">Endereço</label>
@@ -346,6 +352,7 @@ const MESES_NM=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','A
 let D={
   nome:'',
   cidade:'',
+  uf:'',
   endereco:'',
   telefone:'',
   donoEmail:'',
@@ -445,6 +452,7 @@ const EMAIL_REGEX=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function saveRestaurante(){
   D.nome=document.getElementById('inp-nome').value.trim();
   D.cidade=document.getElementById('inp-cidade').value.trim();
+  D.uf=document.getElementById('inp-uf').value.trim().toUpperCase();
   D.endereco=document.getElementById('inp-endereco').value.trim();
   D.telefone=document.getElementById('inp-telefone').value.trim();
   D.donoEmail=limparEmail(document.getElementById('inp-email').value);
@@ -779,7 +787,7 @@ function renderResumo(){
   document.getElementById('resumo').innerHTML=`
     <h4>Resumo do cadastro</h4>
     <div class="srow"><span>Restaurante</span><span>${D.nome||'—'}</span></div>
-    <div class="srow"><span>Cidade</span><span>${D.cidade||'—'}</span></div>
+    <div class="srow"><span>Cidade</span><span>${D.cidade?D.cidade+(D.uf?'/'+D.uf:''):'—'}</span></div>
     <div class="srow"><span>Endereço</span><span>${D.endereco||'—'}</span></div>
     <div class="srow"><span>Contato/WhatsApp</span><span>${D.telefone||'—'}</span></div>
     <div class="srow"><span>Total equipe</span><span>${totalFunc} pessoas</span></div>
@@ -845,7 +853,7 @@ async function finalizarCadastro(){
       const slugTentativa=tentativa===0?slugBase:`${slugBase}-${tentativa+1}`;
       const resp=await supabaseClient
         .from('restaurantes')
-        .insert({owner_id:ownerId,nome:D.nome,cidade:D.cidade,endereco:D.endereco||null,telefone:D.telefone||null,slug:slugTentativa,trial_fim:trialFim,indicado_por:indicadoPorId})
+        .insert({owner_id:ownerId,nome:D.nome,cidade:D.cidade,uf:D.uf||null,endereco:D.endereco||null,telefone:D.telefone||null,slug:slugTentativa,trial_fim:trialFim,indicado_por:indicadoPorId})
         .select()
         .single();
       if(!resp.error){restaurante=resp.data;restError=null;break;}
