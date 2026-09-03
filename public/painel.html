@@ -139,12 +139,33 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .esc-empty p{font-size:14px;color:var(--text2);font-weight:500}
 .esc-empty span{font-size:12px;color:var(--text3)}
 
-/* HEADER ESCALA — sticky, empilhado logo abaixo do .app-header (também
-   sticky): top usa o mesmo ~144px já calibrado pro header principal (132px
-   medidos + folga), dando um respiro visual entre os dois blocos escuros
-   em vez de grudarem sem transição. z-index:5, sempre abaixo do header
-   (10) e bem abaixo de drawer/modal/lightbox (999+). */
-.eh{padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%);border-radius:var(--r) var(--r) 0 0;position:sticky;top:144px;z-index:5}
+/* FAIXA DE CLIMA — sticky, empilhada logo abaixo do .app-header (top:144px,
+   o mesmo valor que o header principal já calibrava pro próximo elemento
+   sticky, antes só usado pelo .eh). Altura FIXA de propósito (52px sempre,
+   com dado carregado, carregando ou vazio) — é o que permite calibrar o
+   próximo nível (.eh, mais abaixo) de forma previsível; se a altura mudasse
+   dependendo de ter dado ou não, o .eh "pularia" de posição. z-index:9,
+   abaixo do header (10) e acima do .eh (5). */
+#clima-bar{position:sticky;top:144px;z-index:9;height:52px;background:var(--surface);border-radius:var(--r);box-shadow:var(--shadow-md);border:1px solid var(--border);margin-bottom:20px;display:flex;align-items:center;overflow:hidden}
+.clima-hoje{flex-shrink:0;display:flex;align-items:center;gap:8px;padding:0 12px;height:100%}
+.clima-hoje .ce{font-size:22px;line-height:1}
+.clima-hoje .ctemp{font-size:15px;font-weight:800;color:var(--text);white-space:nowrap}
+.clima-hoje .clocal{font-size:10px;color:var(--text3);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.clima-carregando{padding:0 14px;font-size:12px;color:var(--text3);font-weight:600}
+.clima-div{width:1px;align-self:stretch;background:var(--border);flex-shrink:0;margin:10px 0}
+.clima-proximos{flex:1;display:flex;gap:2px;overflow-x:auto;height:100%;align-items:center;padding:0 8px;-webkit-overflow-scrolling:touch}
+.clima-proximos::-webkit-scrollbar{display:none}
+.clima-dia{flex-shrink:0;display:flex;align-items:center;gap:5px;padding:0 10px;font-size:11px;color:var(--text2);white-space:nowrap}
+.clima-dia b{color:var(--text);font-weight:800}
+.clima-dia .cdiasem{font-size:9px;font-weight:800;color:var(--text3);text-transform:uppercase}
+/* HEADER ESCALA — sticky, empilhado logo abaixo da faixa de clima (que por
+   sua vez já está logo abaixo do .app-header). top = 144 (onde a faixa de
+   clima começa) + 52 (altura fixa da faixa) + ~8 de folga — mesmo espírito
+   de calibração manual que já existia aqui antes da faixa de clima entrar
+   nessa pilha, só empurrado pra baixo o suficiente pra abrir espaço pra
+   ela. z-index:5, sempre abaixo do header (10) e da faixa de clima (9), e
+   bem abaixo de drawer/modal/lightbox (999+). */
+.eh{padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%);border-radius:var(--r) var(--r) 0 0;position:sticky;top:204px;z-index:5}
 .edate{font-size:18px;font-weight:800;color:white;letter-spacing:-.3px}
 .eturn{font-size:12px;color:rgba(255,255,255,.65);margin-top:3px;font-weight:500}
 .head-badges{display:flex;flex-direction:column;gap:4px;align-items:flex-end}
@@ -375,6 +396,8 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
       <button class="menu-acao-rapida" onclick="abrirEventos()">🎉 Eventos</button>
     </div>
   </div>
+
+  <div id="clima-bar"><span class="clima-carregando">🌡️ Carregando previsão...</span></div>
 
   <div class="controls">
     <div class="ctrl"><label>Mês</label>
@@ -1285,55 +1308,45 @@ async function obterPrevisaoTempo(){
     return previsao;
   }catch(e){return null;}
 }
+// Faixa compacta (não card vertical): hoje fica fixo à esquerda (nunca
+// rola), os próximos dias ficam num scroll horizontal à direita, dentro da
+// mesma faixa de altura única — é o que permite ela ser sticky com altura
+// previsível (ver comentário de #clima-bar no <style>).
 function climaCardHtml(previsao){
-  const dn=new Date(previsao.atual.data+"T12:00:00");
   const hojeInfo=climaInfo(previsao.atual.codigo);
   const localTxt=[RESTAURANTE_CIDADE,RESTAURANTE_UF].filter(Boolean).join("/");
   const proximosHtml=previsao.proximos.map(p=>{
     const info=climaInfo(p.codigo);
-    const diaAbrev=new Date(p.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","");
-    return `<div style="flex:1;text-align:center;background:var(--surface2);border-radius:var(--rs);padding:8px 4px">
-      <div style="font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase">${diaAbrev}</div>
-      <div style="font-size:20px;margin:4px 0">${info.e}</div>
-      <div style="font-size:11px;font-weight:700;color:var(--text)">${p.tempMax}°</div>
-      <div style="font-size:10px;color:var(--text3)">${p.tempMin}°</div>
-    </div>`;
+    const diaAbrev=new Date(p.data+"T12:00:00").toLocaleDateString("pt-BR",{weekday:"short"}).replace(".","").toUpperCase();
+    return `<div class="clima-dia"><span class="cdiasem">${diaAbrev}</span>${info.e}<b>${p.tempMax}°</b></div>`;
   }).join("");
-  return `<div class="esc" style="margin-top:12px">
-    <div style="padding:14px 16px;border-bottom:1.5px solid var(--border);background:linear-gradient(135deg,var(--text) 0%,#3A2A1A 100%);display:flex;align-items:center;justify-content:space-between">
+  return `<div class="clima-hoje">
+      <span class="ce">${hojeInfo.e}</span>
       <div>
-        <div style="font-size:16px;font-weight:800;color:white">🌡️ Previsão do tempo</div>
-        ${localTxt?`<div style="font-size:11px;color:rgba(255,255,255,.6);margin-top:2px">${localTxt}</div>`:""}
+        <div class="ctemp">${previsao.atual.tempMax}°/${previsao.atual.tempMin}°</div>
+        ${localTxt?`<div class="clocal">${localTxt}</div>`:""}
       </div>
     </div>
-    <div style="padding:14px 16px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-        <div style="font-size:36px;line-height:1">${hojeInfo.e}</div>
-        <div>
-          <div style="font-size:22px;font-weight:900;color:var(--text);letter-spacing:-.3px">${previsao.atual.tempMax}° <span style="color:var(--text3);font-weight:700">/ ${previsao.atual.tempMin}°</span></div>
-          <div style="font-size:12px;color:var(--text2);font-weight:600">${hojeInfo.l} — hoje</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">${proximosHtml}</div>
-    </div>
-  </div>`;
+    <div class="clima-div"></div>
+    <div class="clima-proximos">${proximosHtml}</div>`;
 }
-// Chamado a partir de renderEmpty() de forma assíncrona, depois da Agenda já
-// ter sido desenhada — nunca atrasa nem trava o resto da Home. Se a busca
-// falhar em qualquer etapa (sem cidade cadastrada, geocoding sem resultado,
-// API fora do ar), o container simplesmente fica vazio: card não aparece,
-// sem mensagem de erro, sem quebrar nada em volta.
+// Chamado 1x do boot(), depois de RESTAURANTE_CIDADE/UF já estarem
+// carregados — não depende de qual tela está aberta (Home ou um dia
+// selecionado), já que a faixa agora é fixa/sticky em qualquer uma delas,
+// então não faz sentido mais reexecutar isso em todo renderEmpty()/
+// renderEsc(). Roda de forma assíncrona, sem bloquear o resto do boot().
+// Se a busca falhar em qualquer etapa (sem cidade cadastrada, geocoding sem
+// resultado, API fora do ar), o conteúdo simplesmente fica vazio (a faixa em
+// si continua lá, reservando o espaço pro .eh de baixo se calibrar contra —
+// ver comentário de #clima-bar), sem mensagem de erro.
 async function atualizarCardClima(){
-  const container=document.getElementById("clima-card");
-  if(!container)return; // Home já não está mais aberta (usuário navegou antes da resposta chegar)
+  const container=document.getElementById("clima-bar");
+  if(!container)return;
   try{
     const previsao=await obterPrevisaoTempo();
-    const containerAtual=document.getElementById("clima-card"); // reconfirma: pode ter saído da Home enquanto esperava a resposta
-    if(!containerAtual)return;
-    containerAtual.innerHTML=previsao?climaCardHtml(previsao):"";
+    container.innerHTML=previsao?climaCardHtml(previsao):"";
   }catch(e){
-    const containerAtual=document.getElementById("clima-card");
-    if(containerAtual)containerAtual.innerHTML="";
+    container.innerHTML="";
   }
 }
 
@@ -1397,13 +1410,7 @@ function renderEmpty(){
     <div style="padding:10px 16px;background:var(--surface2);border-top:1px solid var(--border)">
       <div style="text-align:center;color:var(--text3);font-size:12px">📅 Toque em um dia para ver a escala</div>
     </div>
-  </div>
-  <div id="clima-card"></div>`;
-  // Assíncrono de propósito: a Agenda acima já está desenhada e interativa
-  // antes da previsão do tempo sequer começar a buscar — nunca atrasa a
-  // Home. #clima-card começa vazio (nada aparece) até a resposta chegar (ou
-  // pra sempre, se falhar/não tiver cidade cadastrada).
-  atualizarCardClima();
+  </div>`;
 }
 
 function renderEsc(d,mi){
@@ -2692,6 +2699,7 @@ async function salvarConfigDados(){
   const endereco=document.getElementById("cd-endereco").value.trim();
   const telefone=document.getElementById("cd-telefone").value.trim();
   if(!nome){avisoErro("Informe o nome do restaurante.");return;}
+  const cidadeOuUfMudou=cidade!==RESTAURANTE_CIDADE||uf!==RESTAURANTE_UF;
   const{error}=await supabaseClient.from("restaurantes").update({
     nome,cidade:cidade||null,uf:uf||null,endereco:endereco||null,telefone:telefone||null,
   }).eq("id",RESTAURANTE_ID);
@@ -2700,6 +2708,13 @@ async function salvarConfigDados(){
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=RESTAURANTE_CIDADE+" · Gestão de Salão";
+  // Cidade/UF mudou: o cache da previsão (só por data, não por cidade) ficaria
+  // preso mostrando o clima do lugar antigo até virar o dia — limpa os dois
+  // caches e busca de novo agora, refletindo a faixa na hora.
+  if(cidadeOuUfMudou){
+    try{localStorage.removeItem(climaCacheKeyCoords());localStorage.removeItem(climaCacheKeyPrevisao());}catch(e){}
+    atualizarCardClima();
+  }
   showToast("✅ Dados atualizados!");
   renderConfigDados();
 }
@@ -4283,6 +4298,11 @@ async function boot(){
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";
   aplicarLogoNoHeader();
+  // 1x só, aqui — a faixa de clima é fixa/sticky em qualquer tela (Home ou
+  // um dia selecionado), não faz sentido mais reexecutar isso a cada
+  // renderEmpty()/renderEsc(). Assíncrono de propósito: não bloqueia o
+  // resto do boot() (carregar equipe, praças, operacional etc.).
+  atualizarCardClima();
 
   await carregarEquipeEPracas();
 
