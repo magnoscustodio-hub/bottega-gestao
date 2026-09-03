@@ -102,7 +102,16 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .main{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start}
 @media(max-width:620px){.app{padding:12px}.main{grid-template-columns:1fr}.header-info h1{font-size:15px}}
 /* DESKTOP — regras aditivas, só entram em telas largas; mobile/tablet abaixo de 1024px continuam lendo exatamente as regras de sempre */
-@media(min-width:1024px){.app{max-width:1400px}.main{grid-template-columns:380px 1fr}}
+@media(min-width:1024px){
+  .app{max-width:1400px}
+  .main{grid-template-columns:380px 1fr}
+  /* Só aqui: coluna do #esc sempre >=576px (medido), conteúdo da faixa
+     precisa de ~410px — nunca estoura, então não existe o cenário de
+     overflow onde Chrome e WebKit divergem (ver comentário de
+     .clima-proximos). Espalha os "próximos dias" pra não sobrar vão vazio
+     à direita agora que a faixa herda a largura toda da coluna. */
+  .clima-proximos{justify-content:space-between}
+}
 
 /* CALENDÁRIO */
 .cal{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow-md);border:1px solid var(--border)}
@@ -165,12 +174,17 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .clima-hoje .clocal{font-size:10px;color:var(--text3);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
 .clima-carregando{padding:0 14px;font-size:12px;color:var(--text3);font-weight:600}
 .clima-div{width:1px;align-self:stretch;background:var(--border);flex-shrink:0;margin:10px 0}
-/* justify-content:space-between só faz efeito quando sobra espaço (telas
-   largas, onde a faixa agora herda a coluna toda do #esc) — quando o
-   conteúdo já enche/estoura a largura (mobile), não muda nada, os dias
-   continuam colados e roláveis exatamente como antes. Sem isso, sobraria
-   um vão vazio à direita dos "próximos dias" em telas largas. */
-.clima-proximos{flex:1;display:flex;gap:2px;overflow-x:auto;height:100%;align-items:center;padding:0 8px;justify-content:space-between;-webkit-overflow-scrolling:touch}
+/* justify-content:flex-start (padrão) de propósito: content overflowing +
+   justify-content diferente de flex-start é uma área onde os motores de
+   renderização divergem — Chrome/Chromium ignora o justify-content quando
+   o espaço livre é negativo (cai pra flex-start sozinho), mas o WebKit do
+   iOS não faz esse fallback, e o conteúdo que "sobra" fica posicionado
+   ANTES do início do scroll (scrollLeft não alcança valor negativo) — no
+   caso daqui, cortava o rótulo do dia (ex. "SEX") do primeiro chip da
+   área rolável no mobile. A versão "espalhada" só entra no desktop (ver
+   media query lá embaixo), onde já é garantido que o conteúdo NUNCA
+   estoura a largura, então esse overflow nem chega a acontecer. */
+.clima-proximos{flex:1;display:flex;gap:2px;overflow-x:auto;height:100%;align-items:center;padding:0 8px;-webkit-overflow-scrolling:touch}
 .clima-proximos::-webkit-scrollbar{display:none}
 .clima-dia{flex-shrink:0;display:flex;align-items:center;gap:5px;padding:0 10px;font-size:11px;color:var(--text2);white-space:nowrap}
 .clima-dia svg{width:18px;height:18px;flex-shrink:0;display:block}
