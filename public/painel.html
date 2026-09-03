@@ -1412,18 +1412,30 @@ async function resolverCoordsRestaurante(){
     return coords;
   }catch(e){return null;}
 }
+// Versão do formato salvo em cache — sobe toda vez que a FORMA de
+// "previsao" muda (não só o valor). Sem isso, quem já tinha aberto o app
+// hoje ANTES de um deploy que muda o formato (ex: quando o campo
+// "detalhado" foi criado) ficava com um objeto antigo, incompleto, preso
+// no cache o dia inteiro — "data===hojeIso" continua batendo (o dia não
+// mudou), só a forma do objeto que ficou pra trás. Bug real observado:
+// abrirModalClima() checava "!CLIMA_PREVISAO.detalhado" e saía calado, sem
+// erro nenhum, com a faixa compacta continuando normal (não depende de
+// "detalhado") — por isso passava despercebido. Bump isto sempre que
+// "previsao" ganhar/perder um campo.
+const CLIMA_CACHE_VERSAO=2;
 // Previsão de hoje + próximos dias, com cache em localStorage por dia — só
 // busca de novo se o cache não é de hoje (o pedido explícito de "1x por
-// dia, não a cada carregamento de tela"). Uma chamada só traz os dois
-// blocos que a API suporta juntos: "daily" (resumo hoje+3, pra faixa
-// compacta, igual sempre foi) e "hourly" (7 dias hora a hora, só usado pra
-// montar o "detalhado" por período — ver agruparPeriodosClima), sem
-// precisar de 2ª chamada nem de chave paga. Retorna null em qualquer falha.
+// dia, não a cada carregamento de tela") E é da versão de formato atual
+// (ver CLIMA_CACHE_VERSAO acima). Uma chamada só traz os dois blocos que a
+// API suporta juntos: "daily" (resumo hoje+3, pra faixa compacta, igual
+// sempre foi) e "hourly" (7 dias hora a hora, só usado pra montar o
+// "detalhado" por período — ver agruparPeriodosClima), sem precisar de 2ª
+// chamada nem de chave paga. Retorna null em qualquer falha.
 async function obterPrevisaoTempo(){
   const hojeIso=new Date().toISOString().slice(0,10);
   try{
     const cacheado=JSON.parse(localStorage.getItem(climaCacheKeyPrevisao())||"null");
-    if(cacheado&&cacheado.data===hojeIso)return cacheado.previsao;
+    if(cacheado&&cacheado.data===hojeIso&&cacheado.v===CLIMA_CACHE_VERSAO)return cacheado.previsao;
   }catch(e){}
   const coords=await resolverCoordsRestaurante();
   if(!coords)return null;
@@ -1445,7 +1457,7 @@ async function obterPrevisaoTempo(){
       proximos:dias.slice(1,4),
       detalhado:agruparPeriodosClima(diario.time,dados.hourly),
     };
-    try{localStorage.setItem(climaCacheKeyPrevisao(),JSON.stringify({data:hojeIso,previsao}));}catch(e){}
+    try{localStorage.setItem(climaCacheKeyPrevisao(),JSON.stringify({data:hojeIso,v:CLIMA_CACHE_VERSAO,previsao}));}catch(e){}
     return previsao;
   }catch(e){return null;}
 }
