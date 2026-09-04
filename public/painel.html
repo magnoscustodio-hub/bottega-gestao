@@ -1341,12 +1341,36 @@ function climaMmClasse(mm){
 // Um dia atrás, em ISO (YYYY-MM-DD) — usado só pra jogar a madrugada
 // (0h-5h) de um dia pra dentro da "noite" do dia ANTERIOR (ver
 // agruparPeriodosClima), já que pra decisão de escala "a noite de sexta"
-// inclui a madrugada de sábado, não é um bloco isolado.
+// inclui a madrugada de sábado, não é um bloco isolado. Ancorado em meio-
+// dia de propósito (ver climaHojeIso logo abaixo pra entender por quê).
 function climaDiaAnterior(dataIso){
   const d=new Date(dataIso+"T12:00:00");
   d.setDate(d.getDate()-1);
   return d.toISOString().slice(0,10);
 }
+// Um dia à frente, mesma lógica de climaDiaAnterior (usado só pro rótulo
+// "Amanhã" no modal de detalhes).
+function climaDiaSeguinte(dataIso){
+  const d=new Date(dataIso+"T12:00:00");
+  d.setDate(d.getDate()+1);
+  return d.toISOString().slice(0,10);
+}
+// "Hoje" em ISO (YYYY-MM-DD) no fuso LOCAL do navegador — usar isto em vez
+// de `new Date().toISOString().slice(0,10)` é essencial aqui: toISOString
+// é UTC, e o Brasil é UTC-3, então entre ~21h e meia-noite (horário local)
+// o relógio UTC já virou o dia seguinte enquanto localmente ainda é hoje —
+// bem a janela em que o gerente costuma estar fechando a noite no app.
+// Bug real observado: cache de previsão gravado nessa janela ficava
+// marcado com a data de amanhã (UTC), então no dia seguinte inteiro
+// (quando "hoje" já bate com esse valor) o cache "antigo" (na real, um dia
+// atrasado) era aceito como válido — o modal mostrava o dia que já passou
+// como primeiro bloco, com o rótulo caindo pro nome do dia da semana (não
+// "Hoje" nem "Amanhã", já que a comparação usava a MESMA função errada em
+// ambos os lados... exceto que a API (`timezone=auto`) já devolve os dias
+// no fuso LOCAL, então o array de dias ficava um item atrasado em relação
+// ao "hoje" recalculado. Mesma função que agHoje() já usa em outro lugar
+// deste arquivo — reaproveitada aqui por consistência.
+function climaHojeIso(){return agHoje();}
 // Agrupa a previsão HORÁRIA (hourly, já em horário local por causa do
 // timezone=auto na chamada) em 3 períodos por dia — manhã (6h-11h), tarde
 // (12h-17h) e noite (18h-23h + a madrugada 0h-5h do dia seguinte, que entra
@@ -1446,7 +1470,7 @@ const CLIMA_CACHE_VERSAO=2;
 // "detalhado" por período — ver agruparPeriodosClima), sem precisar de 2ª
 // chamada nem de chave paga. Retorna null em qualquer falha.
 async function obterPrevisaoTempo(){
-  const hojeIso=new Date().toISOString().slice(0,10);
+  const hojeIso=climaHojeIso();
   try{
     const cacheado=JSON.parse(localStorage.getItem(climaCacheKeyPrevisao())||"null");
     if(cacheado&&cacheado.data===hojeIso&&cacheado.v===CLIMA_CACHE_VERSAO)return cacheado.previsao;
@@ -1531,8 +1555,8 @@ function abrirModalClima(){
 function fecharModalClima(){cMod();}
 function renderModalClima(previsao){
   const localTxt=[RESTAURANTE_CIDADE,RESTAURANTE_UF].filter(Boolean).join("/");
-  const hojeIso=new Date().toISOString().slice(0,10);
-  const amanhaIso=(()=>{const d=new Date();d.setDate(d.getDate()+1);return d.toISOString().slice(0,10);})();
+  const hojeIso=climaHojeIso();
+  const amanhaIso=climaDiaSeguinte(hojeIso);
   const PER_LABEL={manha:"Manhã",tarde:"Tarde",noite:"Noite"};
   const diasHtml=previsao.detalhado.map(dia=>{
     const dt=new Date(dia.data+"T12:00:00");
