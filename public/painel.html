@@ -1458,9 +1458,20 @@ async function resolverCoordsRestaurante(){
 // mudou), só a forma do objeto que ficou pra trás. Bug real observado:
 // abrirModalClima() checava "!CLIMA_PREVISAO.detalhado" e saía calado, sem
 // erro nenhum, com a faixa compacta continuando normal (não depende de
-// "detalhado") — por isso passava despercebido. Bump isto sempre que
-// "previsao" ganhar/perder um campo.
-const CLIMA_CACHE_VERSAO=2;
+// "detalhado") — por isso passava despercebido.
+//
+// v3: bump por um motivo diferente do de cima — não é a FORMA do objeto
+// que mudou dessa vez, é o CÁLCULO de "hoje" (climaHojeIso, fuso local em
+// vez de UTC). Cache gravado pelo código antigo entre ~21h e meia-noite
+// guardava "data" já como o dia seguinte (UTC), então no dia seguinte de
+// verdade o "hoje" recalculado (agora correto) batia com esse valor POR
+// COINCIDÊNCIA — "data===hojeIso" passava, mas o conteúdo por trás
+// continuava um dia atrasado (o modal mostrava o dia anterior como
+// primeiro bloco). Não dá pra distinguir "calculado certo" de "calculado
+// errado que coincidiu" só olhando o valor salvo — por isso qualquer
+// mudança na LÓGICA de cálculo de "hoje" (não só no formato do objeto)
+// também exige bump aqui.
+const CLIMA_CACHE_VERSAO=3;
 // Previsão de hoje + próximos dias, com cache em localStorage por dia — só
 // busca de novo se o cache não é de hoje (o pedido explícito de "1x por
 // dia, não a cada carregamento de tela") E é da versão de formato atual
