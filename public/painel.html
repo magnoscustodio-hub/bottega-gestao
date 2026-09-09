@@ -406,6 +406,11 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .aus-empty{text-align:center;padding:28px;color:var(--text3);font-size:13px;font-weight:500}
 .filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .filter-row select{flex:1;min-width:120px}
+/* Status do relatório de Eventos — verde/vermelho pra diferenciar
+   concluído de cancelado numa olhada rápida (ver renderRelatorioEventos). */
+.badge-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
+.badge-status.concluido{background:var(--green-bg);color:var(--green);border:1px solid var(--green-br)}
+.badge-status.cancelado{background:var(--red-bg);color:var(--red);border:1px solid var(--red-br)}
 
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--text);color:white;border-radius:var(--r);padding:12px 20px;font-size:13px;font-weight:700;z-index:1000;display:flex;align-items:center;gap:8px;box-shadow:var(--shadow-lg);white-space:nowrap;max-width:90vw}
@@ -2297,6 +2302,72 @@ function exportarAusenciasXlsx(filtroFunc,filtroMes){
   exportarPlanilha(`faltas-atestados${sufixoFunc}_${periodo}.xlsx`,"Faltas e Atestados",resumo,["Data","Funcionário","Setor","Motivo"],linhas);
 }
 
+// EVENTOS (relatório) — reúne o que já saiu da Agenda: eventos concluídos
+// (✓) e cancelados (× — ver agCancelarEvento, que marca cancelado=true em
+// vez de apagar). AGENDA já traz tudo de qualquer status (carregarAgenda()
+// não filtra por concluido/cancelado), então não precisa de query própria,
+// só carregar a Agenda (se ainda não tiver sido carregada) e filtrar aqui.
+function nomeDaPraca(pracaId){return pracaId?(PD.find(p=>p.id===pracaId)?.n||"Restaurante todo"):"Restaurante todo";}
+function eventosDadosBase(){return AGENDA.filter(c=>c.tipo==="evento"&&(c.concluido||c.cancelado));}
+async function openRelatorioEventos(){
+  await carregarAgenda();
+  const hoje=new Date();
+  const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
+  renderRelatorioEventos(mesAtual,"todos");
+}
+function eventosDadosFiltrados(filtroMes,filtroStatus){
+  let dados=eventosDadosBase();
+  if(filtroMes!=="todos")dados=dados.filter(c=>c.data.startsWith(filtroMes));
+  if(filtroStatus==="concluido")dados=dados.filter(c=>c.concluido);
+  else if(filtroStatus==="cancelado")dados=dados.filter(c=>c.cancelado);
+  return[...dados].sort((a,b)=>b.data.localeCompare(a.data)||(b.hora||"").localeCompare(a.hora||""));
+}
+function renderRelatorioEventos(filtroMes,filtroStatus){
+  const base=eventosDadosBase();
+  const meses=[...new Set(base.map(c=>c.data.slice(0,7)))];
+  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
+  meses.sort();
+  const dados=eventosDadosFiltrados(filtroMes,filtroStatus);
+  const qtdConcluidos=dados.filter(c=>c.concluido).length;
+  const qtdCancelados=dados.filter(c=>c.cancelado).length;
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
+    <div class="rel-header">
+      <h3 style="margin-bottom:0">🎉 Eventos</h3>
+      <button class="btn-xlsx" onclick="exportarEventosXlsx('${filtroMes}','${filtroStatus}')" title="Exportar para Excel">📥 Excel</button>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Concluídos e cancelados — o que saiu da Agenda</div>
+    <div class="stat-row">
+      <div class="stat-card"><div class="stat-icon gold">🎉</div><div class="stat-num">${dados.length}</div><div class="stat-label">No período</div></div>
+      <div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-num">${qtdConcluidos}</div><div class="stat-label">Concluídos</div></div>
+      <div class="stat-card"><div class="stat-icon red">🚫</div><div class="stat-num">${qtdCancelados}</div><div class="stat-label">Cancelados</div></div>
+    </div>
+    <div class="filter-row">
+      <select onchange="renderRelatorioEventos(this.value,'${filtroStatus}')"><option value="todos"${filtroMes==="todos"?" selected":""}>Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo,10)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderRelatorioEventos('${filtroMes}',this.value)"><option value="todos"${filtroStatus==="todos"?" selected":""}>Todos os status</option><option value="concluido"${filtroStatus==="concluido"?" selected":""}>Só concluídos</option><option value="cancelado"${filtroStatus==="cancelado"?" selected":""}>Só cancelados</option></select>
+    </div>`;
+  if(dados.length===0){
+    h+=`<div class="aus-empty">📭 Nenhum evento concluído ou cancelado nesse período.</div>`;
+  } else {
+    h+=`<div style="overflow-x:auto"><table class="aus-table"><thead><tr><th>Data</th><th>Horário</th><th>Evento</th><th>Status</th><th>Praça/Local</th><th>Pax</th><th>Observação</th></tr></thead><tbody>
+      ${dados.map(c=>`<tr><td>${fmtData(c.data)}</td><td>${c.hora||"—"}</td><td style="font-weight:700">${c.titulo}</td><td>${c.concluido?'<span class="badge-status concluido">✅ Concluído</span>':'<span class="badge-status cancelado">🚫 Cancelado</span>'}</td><td style="color:var(--text2)">${nomeDaPraca(c.pracaId)}</td><td>${c.paxEsperado||"—"}</td><td style="color:var(--text2)">${c.desc||"—"}</td></tr>`).join("")}
+    </tbody></table></div>`;
+  }
+  h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+function exportarEventosXlsx(filtroMes,filtroStatus){
+  const dados=eventosDadosFiltrados(filtroMes,filtroStatus);
+  const resumo=[
+    ["Total no período",dados.length],
+    ["Concluídos",dados.filter(c=>c.concluido).length],
+    ["Cancelados",dados.filter(c=>c.cancelado).length],
+  ];
+  const linhas=dados.map(c=>[fmtData(c.data),c.hora||"",c.titulo,c.concluido?"Concluído":"Cancelado",nomeDaPraca(c.pracaId),c.paxEsperado||"",c.desc||""]);
+  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
+  const sufixoStatus=filtroStatus!=="todos"?`_${filtroStatus}`:"";
+  exportarPlanilha(`eventos${sufixoStatus}_${periodo}.xlsx`,"Eventos",resumo,["Data","Horário","Evento","Status","Praça/Local","Pax esperado","Observação"],linhas);
+}
+
 // FOLGAS
 // Carrega (ou reaproveita do fsCache) as folgas de um mês/ano específico pra
 // dentro de fsDias. Se for o mês já ativo na tela principal (cm/cy), reusa
@@ -2658,6 +2729,7 @@ const MENU_SECOES=[
   ]},
   {titulo:"Relatórios",itens:[
     {chave:"faltas-atestados",label:"Faltas e Atestados",emoji:"📊",fn:"openHistorico()"},
+    {chave:"eventos",label:"Eventos",emoji:"🎉",fn:"openRelatorioEventos()"},
     {chave:"folgas-vendidas",label:"Vendas de folga de domingo",emoji:"💰",fn:"openRelatorioFolgasVendidas()"},
     {chave:"folgas-vendidas-semana",label:"Vendas de folga em dias de semana",emoji:"💵",fn:"openRelatorioFolgasVendidasSemana()"},
     {chave:"extras",label:"Extras",emoji:"⭐",fn:"openRelatorioExtras()"},
@@ -3708,7 +3780,7 @@ function agMapeiaLinha(r){
   return{
     id:r.id,titulo:r.titulo,data:r.data,hora:r.hora||"",tipo:r.tipo,
     prioridade:r.prioridade,desc:r.descricao||"",recorrencia:r.recorrencia,
-    grupoId:r.grupo_id,concluido:r.concluido,
+    grupoId:r.grupo_id,concluido:r.concluido,cancelado:!!r.cancelado,
     visibilidade:r.visibilidade,criadoPor:r.criado_por,
     paxEsperado:r.pax_esperado,pracaId:r.praca_id,
     menuImagemPath:r.menu_imagem_path,
@@ -3784,7 +3856,13 @@ function agGetFiltrados(){
     const fimStr=fim.toISOString().split("T")[0];
     l=l.filter(c=>(agEhPermanente(c)||(c.data>=hoje&&c.data<=fimStr))&&!c.concluido);
   }
-  else if(["reuniao","tarefa","compromisso","operacao","evento","outro"].includes(agFiltro)) l=l.filter(c=>c.tipo===agFiltro);
+  else if(["reuniao","tarefa","compromisso","operacao","evento","outro"].includes(agFiltro)){
+    l=l.filter(c=>c.tipo===agFiltro);
+    // Evento concluído/cancelado sai da Agenda — fica só no relatório de
+    // Eventos (ver openRelatorioEventos), não polui a aba "🎉 Eventos" com
+    // compromisso já resolvido.
+    if(agFiltro==="evento")l=l.filter(c=>!c.concluido&&!c.cancelado);
+  }
   l=l.sort((a,b)=>{
     if(!a.data&&!b.data)return 0;
     if(!a.data)return -1;
@@ -3895,7 +3973,7 @@ function renderAgendaModal(){
             <div style="display:flex;gap:4px;flex-shrink:0">
               ${agPodeEditar(c)?(!c.concluido?`<button onclick="agConcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--green-br);background:var(--green-bg);cursor:pointer;color:var(--green);font-size:14px;display:flex;align-items:center;justify-content:center" title="Concluir">✓</button>`:`<button onclick="agReabrir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Reabrir">↩</button>`):""}
               ${agPodeEditar(c)?`<button onclick="agEditar('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--text2);font-size:12px;display:flex;align-items:center;justify-content:center" title="Editar">✏️</button>`:""}
-              ${agPodeEditar(c)?`<button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="Excluir">×</button>`:""}
+              ${agPodeEditar(c)?`<button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="${c.tipo==="evento"?"Cancelar":"Excluir"}">×</button>`:""}
             </div>
           </div>
           ${c.desc&&!c.concluido?`<div style="font-size:12px;color:var(--text2);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;margin-left:46px">${c.desc}</div>`:""}
@@ -4121,8 +4199,13 @@ async function agReabrir(id){
   if(error||!data||data.length===0){avisoErro("Sem permissão para reabrir este compromisso.");return;}
   await carregarAgenda();renderAgendaModal();renderEmpty();showToast("↩ Reaberto");
 }
+// Evento é o único tipo que NÃO apaga de verdade no "×" — vira cancelado
+// (soft, ver agCancelarEvento) pra sobrar registro no relatório de
+// Eventos. Os outros tipos (reunião/tarefa/compromisso/operação/outro)
+// continuam excluindo pra valer, comportamento intocado.
 function agExcluir(id){
   const c=AGENDA.find(x=>x.id===id);
+  if(c&&c.tipo==="evento"){agCancelarEvento(id);return;}
   const temGrupo=c&&c.grupoId;
   document.getElementById("modal").innerHTML=`<div class="mov" onclick="if(event.target===this)renderAgendaModal()"><div class="mbox">
     <h3>🗑️ Excluir compromisso</h3>
@@ -4145,6 +4228,34 @@ async function agConfExcluir(id,todos){
   if(error||!apagados||apagados.length===0){avisoErro("Sem permissão para excluir este compromisso.");return;}
   await carregarAgenda();renderAgendaModal();renderEmpty();
   showToast(todos?"🗑️ Série excluída":"🗑️ Excluído");
+}
+// Cancelamento de evento: marca cancelado=true em vez de apagar — o evento
+// sai da aba Agenda/Eventos (ver agGetFiltrados) mas fica registrado no
+// relatório de Eventos (openRelatorioEventos), com status bem visível.
+function agCancelarEvento(id){
+  const c=AGENDA.find(x=>x.id===id);
+  const temGrupo=c&&c.grupoId;
+  document.getElementById("modal").innerHTML=`<div class="mov" onclick="if(event.target===this)renderAgendaModal()"><div class="mbox">
+    <h3>🚫 Cancelar evento</h3>
+    <p class="msub">O evento sai da Agenda, mas fica registrado no relatório de Eventos como cancelado.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px">
+      <button class="ag-btn" style="background:var(--red-bg);color:var(--red);border-color:var(--red-br);padding:12px;font-size:13px" onclick="agConfCancelarEvento('${id}',false)">Apenas este evento</button>
+      ${temGrupo?`<button class="ag-btn" style="background:var(--red);color:white;border-color:var(--red);padding:12px;font-size:13px" onclick="agConfCancelarEvento('${id}',true)">Cancelar todos da série</button>`:""}
+    </div>
+    <div class="macts"><button onclick="renderAgendaModal()">Voltar</button></div>
+  </div></div>`;
+}
+async function agConfCancelarEvento(id,todos){
+  const c=AGENDA.find(x=>x.id===id);
+  let atualizados,error;
+  if(todos&&c&&c.grupoId){
+    ({data:atualizados,error}=await supabaseClient.from("agenda_compromissos").update({cancelado:true}).eq("grupo_id",c.grupoId).select("id"));
+  } else {
+    ({data:atualizados,error}=await supabaseClient.from("agenda_compromissos").update({cancelado:true}).eq("id",id).select("id"));
+  }
+  if(error||!atualizados||atualizados.length===0){avisoErro("Sem permissão para cancelar este evento.");return;}
+  await carregarAgenda();renderAgendaModal();
+  showToast(todos?"🚫 Série cancelada":"🚫 Evento cancelado");
 }
 
 // --- Lightbox (visualizador em tela cheia da imagem do menu, com pinch-zoom nativo) ---
