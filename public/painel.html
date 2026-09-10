@@ -2122,24 +2122,29 @@ function abrirEdicaoAusencia(nome,motivo,dsReferencia){
       <div class="macts">
         <button onclick="fecharEdicaoAusencia()">Cancelar</button>
         <button class="brd" onclick="confirmarRemoverPeriodoAusencia('${nome}','${periodo.ini}','${periodo.fim}')">🗑️ Remover período</button>
-        <button class="bok" onclick="salvarEdicaoAusencia('${nome}','${dsReferencia}')">Salvar</button>
+        <button class="bok" onclick="salvarEdicaoAusencia('${nome}','${periodo.ini}','${periodo.fim}')">Salvar</button>
       </div>
     </div></div>`;
 }
 
-function salvarEdicaoAusencia(nome,dsAntiga){
+function salvarEdicaoAusencia(nome,dsAntigaIni,dsAntigaFim){
   const motivo=document.getElementById("ed-motivo").value;
   const iniStr=document.getElementById("ed-ini").value,fimStr=document.getElementById("ed-fim").value;
   if(!iniStr||!fimStr){alert("Informe o período.");return;}
   const iniDate=new Date(iniStr+"T12:00:00"),fimDate=new Date(fimStr+"T12:00:00");
   if(fimDate<iniDate){alert("Data fim não pode ser anterior ao início.");return;}
-  const antigaDate=new Date(dsAntiga+"T12:00:00");
-  // janela afetada = a data original do registro + o novo período escolhido.
-  // Remove tudo nessa janela antes de reinserir — se o período for estendido
-  // por cima de dias que já tinham registro próprio, evita duplicar (e evita
-  // deixar HISTORICO em memória desincronizado do banco).
-  const janelaIni=new Date(Math.min(antigaDate,iniDate));
-  const janelaFim=new Date(Math.max(antigaDate,fimDate));
+  const antigaIniDate=new Date(dsAntigaIni+"T12:00:00"),antigaFimDate=new Date(dsAntigaFim+"T12:00:00");
+  // janela afetada = UNIÃO do período ANTIGO completo (início E fim, não só
+  // uma data de referência — bug corrigido aqui: usar só uma ponta do
+  // período antigo deixava órfão, em AUSENCIAS/HISTORICO *e* no banco,
+  // qualquer dia que "saísse" do novo intervalo do lado sem referência,
+  // ex. encurtar o fim sem nunca remover os dias que ficaram de fora) com o
+  // novo período escolhido. Remove tudo nessa janela antes de reinserir —
+  // se o período for estendido por cima de dias que já tinham registro
+  // próprio, evita duplicar (e evita deixar HISTORICO em memória
+  // desincronizado do banco).
+  const janelaIni=new Date(Math.min(antigaIniDate,iniDate));
+  const janelaFim=new Date(Math.max(antigaFimDate,fimDate));
   const diasRemovidos=[];
   {
     const cur=new Date(janelaIni);
