@@ -1094,19 +1094,20 @@ function horaParaNumero(str){
   if(isNaN(h))return null;
   return h+min/60;
 }
-// Auxílio visual do filtro de Turno: nunca trava nada, só deixa mais discreto
-// quem normalmente chega depois das 15h quando o turno selecionado é Almoço.
-function estiloForaDoTurno(hi){
-  if(!hi||TURNO!=="a")return "";
+// Filtro de exibição por Turno: funcionário com horário especial só aparece
+// no turno em que de fato está — antes do corte, é gente de Almoço; no
+// corte ou depois, é gente de Jantar. Não mexe na alocação/escala em si,
+// só em quem é desenhado como chip nesta tela.
+function pertenceAoTurno(hi){
+  if(!hi)return true;
   const n=horaParaNumero(hi.hora);
-  return(n!==null&&n>=15)?"opacity:.6;":"";
-}
-function tituloForaDoTurno(hi){
-  return estiloForaDoTurno(hi)?" title=\"Fora do turno de almoço (auxílio visual — não impede edição)\"":"";
+  if(n===null)return true; // hora não interpretável -- não filtra, mostra normal
+  const corte=RESTAURANTE_HORARIO_CORTE??16;
+  return TURNO==="j"?(n>=corte):(n<corte);
 }
 function chipComHorario(nome,cor,hi){
   const icone=hi.pontual?"📌":"⏰";
-  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
+  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
 }
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
@@ -1927,9 +1928,10 @@ function renderEsc(d,mi){
         const cor=sk?EQ[sk].c:EQ.garcons.c;
         const isGarcom=sk==="garcons";
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
+        if(!pertenceAoTurno(hi))return"";
         if(!isGarcom&&sk){
           if(hi){
-            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
           }
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
@@ -2014,6 +2016,7 @@ function renderEsc(d,mi){
       :`<div style="display:flex;align-items:center;gap:5px"><span class="cdot" style="background:${eq.c};width:10px;height:10px"></span><span class="pn">${l}</span></div>`;
     const chipsHtml=disp.map(g=>{
       const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
+      if(!pertenceAoTurno(hi))return"";
       // Mesma checagem que as Praças já fazem: se a pessoa é "de casa" em outro
       // setor (ex: Liderança) e foi alocada manualmente aqui, mostra o nome com
       // o emoji/cor do setor de origem — é esse emoji que sinaliza "essa pessoa
@@ -2024,7 +2027,7 @@ function renderEsc(d,mi){
       if(skOrigem&&skOrigem!==k){
         const corOrigem=EQ[skOrigem].c;
         if(hi){
-          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"${tituloForaDoTurno(hi)}><span style="display:flex;align-items:center;gap:4px;${estiloForaDoTurno(hi)}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
+          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
         }
         return `<span class="chip" style="background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span>`;
       }
