@@ -1094,16 +1094,18 @@ function horaParaNumero(str){
   if(isNaN(h))return null;
   return h+min/60;
 }
-// Filtro de exibição por Turno: funcionário com horário especial só aparece
-// no turno em que de fato está — antes do corte, é gente de Almoço; no
-// corte ou depois, é gente de Jantar. Não mexe na alocação/escala em si,
-// só em quem é desenhado como chip nesta tela.
+// Filtro de exibição por Turno: funcionário com horário especial só some do
+// turno em que ele AINDA NÃO CHEGOU. No Almoço, esconde quem só chega no
+// corte ou depois (ainda não está lá). No Jantar, mostra todo mundo — quem
+// tem horário especial já chegou de qualquer forma a essa altura do dia
+// (seja antes ou a partir do corte), então não há motivo pra esconder.
+// Não mexe na alocação/escala em si, só em quem é desenhado como chip aqui.
 function pertenceAoTurno(hi){
-  if(!hi)return true;
+  if(!hi||TURNO==="j")return true;
   const n=horaParaNumero(hi.hora);
   if(n===null)return true; // hora não interpretável -- não filtra, mostra normal
   const corte=RESTAURANTE_HORARIO_CORTE??16;
-  return TURNO==="j"?(n>=corte):(n<corte);
+  return n<corte;
 }
 function chipComHorario(nome,cor,hi){
   const icone=hi.pontual?"📌":"⏰";
