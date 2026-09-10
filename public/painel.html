@@ -411,6 +411,18 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 .aus-empty{text-align:center;padding:28px;color:var(--text3);font-size:13px;font-weight:500}
 .filter-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .filter-row select{flex:1;min-width:120px}
+/* Filtro de meses múltiplo (ver renderFiltroMeses) — dropdown custom em
+   vez de <select multiple> nativo, que é ruim no toque/mobile. */
+.filtro-meses-wrap{position:relative;flex:1;min-width:140px}
+.filtro-meses-btn{width:100%;text-align:left;font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-weight:500;cursor:pointer;font-family:inherit;position:relative;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.filtro-meses-btn::after{content:"▾";position:absolute;right:10px;top:50%;transform:translateY(-50%);color:var(--text2);font-size:11px}
+.filtro-meses-btn.aberto{border-color:var(--gold);background:var(--gold-bg)}
+.filtro-meses-painel{position:absolute;top:calc(100% + 4px);left:0;right:0;background:var(--surface);border:1.5px solid var(--border-s);border-radius:var(--rs);box-shadow:var(--shadow-lg);z-index:50;max-height:240px;overflow-y:auto;padding:6px}
+.filtro-meses-item{display:flex;align-items:center;gap:9px;padding:9px 8px;border-radius:6px;font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.filtro-meses-item:active{background:var(--surface2)}
+.filtro-meses-item input{width:16px;height:16px;flex-shrink:0;accent-color:var(--gold)}
+.filtro-meses-item.todos{border-bottom:1.5px solid var(--border);margin-bottom:4px;padding-bottom:11px;font-weight:700}
+.filtro-meses-fechar{width:100%;text-align:center;padding:9px;font-size:12px;font-weight:700;color:var(--text2);background:var(--surface2);border-radius:6px;margin-top:4px;cursor:pointer;border:none;font-family:inherit}
 /* Status do relatório de Eventos — verde/vermelho pra diferenciar
    concluído de cancelado numa olhada rápida (ver renderRelatorioEventos). */
 .badge-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;white-space:nowrap}
@@ -694,6 +706,9 @@ const sRes=(mi,d,tu,v)=>{RES[`${mi}_${d}_${tu}`]=v;};
 const fmtData=ds=>{const[y,m,d]=ds.split("-");return `${d}/${m}/${y}`;};
 const fmtDataArquivo=ds=>{const[y,m,d]=ds.split("-");return `${d}-${m}-${y}`;};
 const nomeMesArquivo=mesStr=>{const[y,mo]=mesStr.split("-");return `${MN[parseInt(mo,10)-1].toLowerCase()}-${y}`;};
+// Mesmo papel de nomeMesArquivo, mas pra filtroMeses (array) — usado nos
+// nomes de arquivo .xlsx dos relatórios com filtro de mês múltiplo.
+const periodoArquivo=filtroMeses=>filtroMeses.length===0?"todos-os-periodos":filtroMeses.map(nomeMesArquivo).join("_");
 const sanitizarNomeArquivo=s=>(s||"").trim().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g,"-");
 // Nome de Tabela do Excel só aceita letras/números/underscore e não pode
 // começar com dígito — prefixo fixo garante isso sem precisar checar.
@@ -733,6 +748,53 @@ async function exportarPlanilha(nomeArquivo,nomeAba,resumoLinhas,colunas,linhasD
   const a=document.createElement("a");
   a.href=url;a.download=nomeArquivo;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},0);
+}
+// FILTRO DE MESES (multi-seleção) — componente compartilhado pelos
+// relatórios que têm filtro de mês (Faltas e Atestados, Eventos, Vendas de
+// Folga domingo/semana). Cada relatório guarda sua própria seleção como
+// array de "YYYY-MM" (array vazio = "Todos os meses"); só a UI e a lógica
+// de toggle são compartilhadas aqui. Extras fica de fora de propósito —
+// usa navegação por semana, estrutura diferente, não esse filtro.
+let FILTRO_MESES_ABERTO=false;
+// Monta um array literal de JS (aspas simples, pra caber dentro de um
+// atributo onclick="..." que já usa aspas duplas) — ex: ['2026-07','2026-09'].
+function jsArrayLit(arr){return"["+arr.map(v=>`'${v}'`).join(",")+"]";}
+function passaFiltroMeses(ds,filtroMeses){return filtroMeses.length===0||filtroMeses.some(m=>ds.startsWith(m));}
+function filtroMesesLabel(selecionados){
+  if(selecionados.length===0)return"Todos os meses";
+  if(selecionados.length<=2)return selecionados.map(m=>{const[y,mo]=m.split("-");return `${MN[parseInt(mo,10)-1].slice(0,3)}/${y.slice(2)}`;}).join(", ");
+  return `${selecionados.length} meses selecionados`;
+}
+// Meses disponíveis pra um relatório: os que têm dado (a partir de
+// pegaDs(item)) + qualquer mês já selecionado (mesmo sem dado ainda, pra
+// não sumir do painel ao filtrar um mês que zerou o resultado).
+function mesesDisponiveisPara(base,filtroMeses,pegaDs){
+  const meses=[...new Set(base.map(x=>pegaDs(x).slice(0,7)))];
+  filtroMeses.forEach(m=>{if(!meses.includes(m))meses.push(m);});
+  return meses.sort();
+}
+// montarChamada(arrLit) devolve a chamada onclick completa (string) que
+// cada relatório usa pra re-renderizar a si mesmo com a nova seleção — é
+// um callback (não algo fixo aqui) porque cada relatório tem sua própria
+// assinatura de render, com a posição do parâmetro de meses variando.
+function renderFiltroMeses(mesesDisponiveis,selecionados,montarChamada){
+  const aberto=FILTRO_MESES_ABERTO;
+  let html=`<div class="filtro-meses-wrap">
+    <button type="button" class="filtro-meses-btn${aberto?" aberto":""}" onclick="FILTRO_MESES_ABERTO=${aberto?"false":"true"};${montarChamada(jsArrayLit(selecionados))}">${filtroMesesLabel(selecionados)}</button>`;
+  if(aberto){
+    html+=`<div class="filtro-meses-painel">
+      <label class="filtro-meses-item todos"><input type="checkbox"${selecionados.length===0?" checked":""} onchange="${montarChamada("[]")}"> Todos os meses</label>
+      ${mesesDisponiveis.map(m=>{
+        const[y,mo]=m.split("-");
+        const marcado=selecionados.includes(m);
+        const novoArr=marcado?selecionados.filter(x=>x!==m):[...selecionados,m];
+        return `<label class="filtro-meses-item"><input type="checkbox"${marcado?" checked":""} onchange="${montarChamada(jsArrayLit(novoArr))}"> ${MN[parseInt(mo,10)-1]} ${y}</label>`;
+      }).join("")}
+      <button type="button" class="filtro-meses-fechar" onclick="FILTRO_MESES_ABERTO=false;${montarChamada(jsArrayLit(selecionados))}">Fechar</button>
+    </div>`;
+  }
+  html+=`</div>`;
+  return html;
 }
 function getSetorFunc(n){for(const[k,eq]of Object.entries(EQ))if(eq.m.includes(n))return eq.l;return "—";}
 
@@ -2095,8 +2157,8 @@ function editarAusencia(nome,d,mi){
   _ausenciaEditorVoltar=()=>{if(dSel!=null)renderEsc(dSel,gm());};
   abrirEdicaoAusencia(nome,motivoAtual,ds);
 }
-function editarPeriodoAusenciaDoRelatorio(nome,motivo,dsReferencia,filtroFuncVoltar,filtroMesVoltar){
-  _ausenciaEditorVoltar=()=>{renderHistorico(filtroFuncVoltar,filtroMesVoltar);};
+function editarPeriodoAusenciaDoRelatorio(nome,motivo,dsReferencia,filtroFuncVoltar,filtroMesesVoltar){
+  _ausenciaEditorVoltar=()=>{renderHistorico(filtroFuncVoltar,filtroMesesVoltar);};
   abrirEdicaoAusencia(nome,motivo,dsReferencia);
 }
 function fecharEdicaoAusencia(){
@@ -2195,24 +2257,20 @@ function removerPeriodoAusencia(nome,ini,fim){
 let relResumoAberto=true;
 function openHistorico(){
   relResumoAberto=true;
+  FILTRO_MESES_ABERTO=false;
   // Abre já filtrado no mês vigente (data real de hoje, não o mês que o
   // calendário porventura esteja mostrando) — gerente pode trocar depois.
   const hoje=new Date();
   const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
-  renderHistorico("todos",mesAtual);
+  renderHistorico("todos",[mesAtual]);
 }
-function renderHistorico(filtroFunc,filtroMes){
+function renderHistorico(filtroFunc,filtroMeses){
   const base=HISTORICO;
   const funcs=[...new Set(base.map(h=>h.func))].sort();
-  const meses=[...new Set(base.map(h=>h.ds.slice(0,7)))];
-  // Garante que o mês do filtro atual apareça no <select> mesmo sem nenhum
-  // registro ainda (ex: mês vigente recém-começado, sem ausência lançada) —
-  // sem isso o dropdown ficaria sem nenhuma opção batendo com o filtro ativo.
-  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
-  meses.sort();
+  const meses=mesesDisponiveisPara(base,filtroMeses,h=>h.ds);
   let dados=base;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   // Faltas/Ausências e Atestados médicos costumavam ser 2 telas separadas, mas
@@ -2225,7 +2283,7 @@ function renderHistorico(filtroFunc,filtroMes){
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <div class="rel-header">
       <h3 style="margin-bottom:0">📊 Faltas e Atestados</h3>
-      <button class="btn-xlsx" onclick="exportarAusenciasXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
+      <button class="btn-xlsx" onclick="exportarAusenciasXlsx('${filtroFunc}',${jsArrayLit(filtroMeses)})" title="Exportar para Excel">📥 Excel</button>
     </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon red">🚫</div><div class="stat-num">${dados.length}</div><div class="stat-label">Registros</div></div>
@@ -2241,8 +2299,8 @@ function renderHistorico(filtroFunc,filtroMes){
   }
   h+=`
     <div class="filter-row">
-      <select onchange="renderHistorico(this.value,document.getElementById('fil-mes').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
-      <select id="fil-mes" onchange="renderHistorico('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderHistorico(this.value,${jsArrayLit(filtroMeses)})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      ${renderFiltroMeses(meses,filtroMeses,arr=>`renderHistorico('${filtroFunc}',${arr})`)}
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma ausência registrada.</div>`;}
   else{
@@ -2251,24 +2309,24 @@ function renderHistorico(filtroFunc,filtroMes){
       h+=`<div class="sec-title" style="margin-bottom:8px">Períodos</div>${periodos.map(p=>`
         <div style="display:flex;align-items:center;justify-content:space-between;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:8px 12px;margin-bottom:6px">
           <span style="font-size:13px;font-weight:700;color:var(--text)">${fmtData(p.ini)}${p.ini!==p.fim?" — "+fmtData(p.fim):""} <span style="font-weight:500;color:var(--text2)">· ${p.motivo}</span></span>
-          <button onclick="editarPeriodoAusenciaDoRelatorio('${filtroFunc}','${p.motivo}','${p.ini}','${filtroFunc}','${filtroMes}')" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-weight:700;font-family:inherit">✏️ Editar período</button>
+          <button onclick="editarPeriodoAusenciaDoRelatorio('${filtroFunc}','${p.motivo}','${p.ini}','${filtroFunc}',${jsArrayLit(filtroMeses)})" style="font-size:11px;padding:4px 10px;border-radius:20px;border:1px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);cursor:pointer;font-weight:700;font-family:inherit">✏️ Editar período</button>
         </div>`).join("")}
       <table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Motivo</th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.motivo}</td></tr>`).join("")}</tbody></table>`;
     } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
-        <div class="fs-setor-hd" onclick="relResumoAberto=!relResumoAberto;renderHistorico('${filtroFunc}','${filtroMes}')">
+        <div class="fs-setor-hd" onclick="relResumoAberto=!relResumoAberto;renderHistorico('${filtroFunc}',${jsArrayLit(filtroMeses)})">
           <div class="fs-setor-left"><span style="font-size:20px">📊</span>
             <div><div class="fs-setor-nm">Resumo por funcionário</div>
             <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${relResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderHistorico('${n}','${filtroMes}')"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
+        ${relResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderHistorico('${n}',${jsArrayLit(filtroMeses)})"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:${c>=3?"var(--red)":c>=2?"var(--yellow)":"var(--green)"}">${c} ausência${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
-    const txt=gerarTextoWA(dados,filtroFunc,filtroMes);
+    const txt=gerarTextoWA(dados,filtroFunc,filtroMeses);
     h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button><button class="bwp" onclick="copiarWA()">📲 Copiar para WhatsApp</button></div>
     <textarea id="wa-text" style="position:absolute;left:-9999px">${txt}</textarea>`;
   }
@@ -2293,12 +2351,12 @@ _Total: ${dados.length} registro${dados.length!==1?"s":""}_`;
 }
 function copiarWA(){const el=document.getElementById("wa-text");if(!el)return;el.select();try{document.execCommand("copy");showToast("✅ Copiado! Cole no WhatsApp");}catch(e){navigator.clipboard?.writeText(el.value).then(()=>showToast("✅ Copiado!")).catch(()=>showToast("Copie o texto manualmente"));}}
 // Recalcula os mesmos dados filtrados que renderHistorico já mostra na tela
-// (mesmo filtroFunc/filtroMes) e exporta em .xlsx — resumo com total geral +
+// (mesmo filtroFunc/filtroMeses) e exporta em .xlsx — resumo com total geral +
 // total por categoria (motivo), igual ao bloco "Por categoria" da tela.
-function exportarAusenciasXlsx(filtroFunc,filtroMes){
+function exportarAusenciasXlsx(filtroFunc,filtroMeses){
   let dados=HISTORICO;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const porCategoria={};
   dados.forEach(r=>{porCategoria[r.motivo]=(porCategoria[r.motivo]||0)+1;});
@@ -2308,8 +2366,7 @@ function exportarAusenciasXlsx(filtroFunc,filtroMes){
   ];
   const linhas=dados.map(r=>[fmtData(r.ds),r.func,r.setor,r.motivo]);
   const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
-  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
-  exportarPlanilha(`faltas-atestados${sufixoFunc}_${periodo}.xlsx`,"Faltas e Atestados",resumo,["Data","Funcionário","Setor","Motivo"],linhas);
+  exportarPlanilha(`faltas-atestados${sufixoFunc}_${periodoArquivo(filtroMeses)}.xlsx`,"Faltas e Atestados",resumo,["Data","Funcionário","Setor","Motivo"],linhas);
 }
 
 // EVENTOS (relatório) — reúne o que já saiu da Agenda: eventos concluídos
@@ -2321,29 +2378,28 @@ function nomeDaPraca(pracaId){return pracaId?(PD.find(p=>p.id===pracaId)?.n||"Re
 function eventosDadosBase(){return AGENDA.filter(c=>c.tipo==="evento"&&(c.concluido||c.cancelado));}
 async function openRelatorioEventos(){
   await carregarAgenda();
+  FILTRO_MESES_ABERTO=false;
   const hoje=new Date();
   const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
-  renderRelatorioEventos(mesAtual,"todos");
+  renderRelatorioEventos([mesAtual],"todos");
 }
-function eventosDadosFiltrados(filtroMes,filtroStatus){
+function eventosDadosFiltrados(filtroMeses,filtroStatus){
   let dados=eventosDadosBase();
-  if(filtroMes!=="todos")dados=dados.filter(c=>c.data.startsWith(filtroMes));
+  dados=dados.filter(c=>passaFiltroMeses(c.data,filtroMeses));
   if(filtroStatus==="concluido")dados=dados.filter(c=>c.concluido);
   else if(filtroStatus==="cancelado")dados=dados.filter(c=>c.cancelado);
   return[...dados].sort((a,b)=>b.data.localeCompare(a.data)||(b.hora||"").localeCompare(a.hora||""));
 }
-function renderRelatorioEventos(filtroMes,filtroStatus){
+function renderRelatorioEventos(filtroMeses,filtroStatus){
   const base=eventosDadosBase();
-  const meses=[...new Set(base.map(c=>c.data.slice(0,7)))];
-  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
-  meses.sort();
-  const dados=eventosDadosFiltrados(filtroMes,filtroStatus);
+  const meses=mesesDisponiveisPara(base,filtroMeses,c=>c.data);
+  const dados=eventosDadosFiltrados(filtroMeses,filtroStatus);
   const qtdConcluidos=dados.filter(c=>c.concluido).length;
   const qtdCancelados=dados.filter(c=>c.cancelado).length;
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <div class="rel-header">
       <h3 style="margin-bottom:0">🎉 Eventos</h3>
-      <button class="btn-xlsx" onclick="exportarEventosXlsx('${filtroMes}','${filtroStatus}')" title="Exportar para Excel">📥 Excel</button>
+      <button class="btn-xlsx" onclick="exportarEventosXlsx(${jsArrayLit(filtroMeses)},'${filtroStatus}')" title="Exportar para Excel">📥 Excel</button>
     </div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:12px">Concluídos e cancelados — o que saiu da Agenda</div>
     <div class="stat-row">
@@ -2352,8 +2408,8 @@ function renderRelatorioEventos(filtroMes,filtroStatus){
       <div class="stat-card"><div class="stat-icon red">🚫</div><div class="stat-num">${qtdCancelados}</div><div class="stat-label">Cancelados</div></div>
     </div>
     <div class="filter-row">
-      <select onchange="renderRelatorioEventos(this.value,'${filtroStatus}')"><option value="todos"${filtroMes==="todos"?" selected":""}>Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo,10)-1]} ${y}</option>`;}).join("")}</select>
-      <select onchange="renderRelatorioEventos('${filtroMes}',this.value)"><option value="todos"${filtroStatus==="todos"?" selected":""}>Todos os status</option><option value="concluido"${filtroStatus==="concluido"?" selected":""}>Só concluídos</option><option value="cancelado"${filtroStatus==="cancelado"?" selected":""}>Só cancelados</option></select>
+      ${renderFiltroMeses(meses,filtroMeses,arr=>`renderRelatorioEventos(${arr},'${filtroStatus}')`)}
+      <select onchange="renderRelatorioEventos(${jsArrayLit(filtroMeses)},this.value)"><option value="todos"${filtroStatus==="todos"?" selected":""}>Todos os status</option><option value="concluido"${filtroStatus==="concluido"?" selected":""}>Só concluídos</option><option value="cancelado"${filtroStatus==="cancelado"?" selected":""}>Só cancelados</option></select>
     </div>`;
   if(dados.length===0){
     h+=`<div class="aus-empty">📭 Nenhum evento concluído ou cancelado nesse período.</div>`;
@@ -2365,17 +2421,16 @@ function renderRelatorioEventos(filtroMes,filtroStatus){
   h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
-function exportarEventosXlsx(filtroMes,filtroStatus){
-  const dados=eventosDadosFiltrados(filtroMes,filtroStatus);
+function exportarEventosXlsx(filtroMeses,filtroStatus){
+  const dados=eventosDadosFiltrados(filtroMeses,filtroStatus);
   const resumo=[
     ["Total no período",dados.length],
     ["Concluídos",dados.filter(c=>c.concluido).length],
     ["Cancelados",dados.filter(c=>c.cancelado).length],
   ];
   const linhas=dados.map(c=>[fmtData(c.data),c.hora||"",c.titulo,c.concluido?"Concluído":"Cancelado",nomeDaPraca(c.pracaId),c.paxEsperado||"",c.desc||""]);
-  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
   const sufixoStatus=filtroStatus!=="todos"?`_${filtroStatus}`:"";
-  exportarPlanilha(`eventos${sufixoStatus}_${periodo}.xlsx`,"Eventos",resumo,["Data","Horário","Evento","Status","Praça/Local","Pax esperado","Observação"],linhas);
+  exportarPlanilha(`eventos${sufixoStatus}_${periodoArquivo(filtroMeses)}.xlsx`,"Eventos",resumo,["Data","Horário","Evento","Status","Praça/Local","Pax esperado","Observação"],linhas);
 }
 
 // FOLGAS
@@ -3485,29 +3540,28 @@ let fvResumoAberto=true;
 // feitas na sessão atual (só um F5 completo atualizava antes desse fix).
 async function openRelatorioFolgasVendidas(){
   fvResumoAberto=true;
+  FILTRO_MESES_ABERTO=false;
   // Mesmo padrão do relatório de Faltas e Atestados: abre já no mês vigente
   // (data real de hoje), não em "Todos os meses" — gerente troca se quiser.
   const hoje=new Date();
   const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
-  renderRelatorioFolgasVendidas("todos",mesAtual);
+  renderRelatorioFolgasVendidas("todos",[mesAtual]);
   await carregarHistoricoFolgasVendidas();
-  renderRelatorioFolgasVendidas("todos",mesAtual);
+  renderRelatorioFolgasVendidas("todos",[mesAtual]);
 }
-function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
+function renderRelatorioFolgasVendidas(filtroFunc,filtroMeses){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.func))].sort();
-  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS.map(h=>h.ds.slice(0,7)))];
-  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
-  meses.sort();
+  const meses=mesesDisponiveisPara(HISTORICO_FOLGAS_VENDIDAS,filtroMeses,h=>h.ds);
   let dados=HISTORICO_FOLGAS_VENDIDAS;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   const totalArrecadado=dados.reduce((s,r)=>s+(r.valor||0),0);
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <div class="rel-header">
       <h3 style="margin-bottom:0">💰 Vendas de Folga de Domingo</h3>
-      <button class="btn-xlsx" onclick="exportarFolgasVendidasXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
+      <button class="btn-xlsx" onclick="exportarFolgasVendidasXlsx('${filtroFunc}',${jsArrayLit(filtroMeses)})" title="Exportar para Excel">📥 Excel</button>
     </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
@@ -3515,8 +3569,8 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
       <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-num">R$${fmtValorExtra(totalArrecadado)||"0"}</div><div class="stat-label">Valor total</div></div>
     </div>
     <div class="filter-row">
-      <select onchange="renderRelatorioFolgasVendidas(this.value,document.getElementById('fil-mes-fv').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
-      <select id="fil-mes-fv" onchange="renderRelatorioFolgasVendidas('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderRelatorioFolgasVendidas(this.value,${jsArrayLit(filtroMeses)})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      ${renderFiltroMeses(meses,filtroMeses,arr=>`renderRelatorioFolgasVendidas('${filtroFunc}',${arr})`)}
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma venda de folga registrada.</div>`;}
   else{
@@ -3526,14 +3580,14 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
-        <div class="fs-setor-hd" onclick="fvResumoAberto=!fvResumoAberto;renderRelatorioFolgasVendidas('${filtroFunc}','${filtroMes}')">
+        <div class="fs-setor-hd" onclick="fvResumoAberto=!fvResumoAberto;renderRelatorioFolgasVendidas('${filtroFunc}',${jsArrayLit(filtroMeses)})">
           <div class="fs-setor-left"><span style="font-size:20px">💰</span>
             <div><div class="fs-setor-nm">Quem mais vendeu</div>
             <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${fvResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${fvResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderRelatorioFolgasVendidas('${n}','${filtroMes}')"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
+        ${fvResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderRelatorioFolgasVendidas('${n}',${jsArrayLit(filtroMeses)})"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
   }
@@ -3546,27 +3600,26 @@ function renderRelatorioFolgasVendidas(filtroFunc,filtroMes){
 let fvSemanaResumoAberto=true;
 async function openRelatorioFolgasVendidasSemana(){
   fvSemanaResumoAberto=true;
+  FILTRO_MESES_ABERTO=false;
   const hoje=new Date();
   const mesAtual=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,"0")}`;
-  renderRelatorioFolgasVendidasSemana("todos",mesAtual);
+  renderRelatorioFolgasVendidasSemana("todos",[mesAtual]);
   await carregarHistoricoFolgasVendidasSemana();
-  renderRelatorioFolgasVendidasSemana("todos",mesAtual);
+  renderRelatorioFolgasVendidasSemana("todos",[mesAtual]);
 }
-function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
+function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMeses){
   const funcs=[...new Set(HISTORICO_FOLGAS_VENDIDAS_SEMANA.map(h=>h.func))].sort();
-  const meses=[...new Set(HISTORICO_FOLGAS_VENDIDAS_SEMANA.map(h=>h.ds.slice(0,7)))];
-  if(filtroMes!=="todos"&&!meses.includes(filtroMes))meses.push(filtroMes);
-  meses.sort();
+  const meses=mesesDisponiveisPara(HISTORICO_FOLGAS_VENDIDAS_SEMANA,filtroMeses,h=>h.ds);
   let dados=HISTORICO_FOLGAS_VENDIDAS_SEMANA;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const funcionariosUnicos=[...new Set(dados.map(r=>r.func))].length;
   const totalArrecadado=dados.reduce((s,r)=>s+(r.valor||0),0);
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox">
     <div class="rel-header">
       <h3 style="margin-bottom:0">💰 Vendas de Folga em Dias de Semana</h3>
-      <button class="btn-xlsx" onclick="exportarFolgasVendidasSemanaXlsx('${filtroFunc}','${filtroMes}')" title="Exportar para Excel">📥 Excel</button>
+      <button class="btn-xlsx" onclick="exportarFolgasVendidasSemanaXlsx('${filtroFunc}',${jsArrayLit(filtroMeses)})" title="Exportar para Excel">📥 Excel</button>
     </div>
     <div class="stat-row">
       <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-num">${dados.length}</div><div class="stat-label">Vendas</div></div>
@@ -3574,25 +3627,25 @@ function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
       <div class="stat-card"><div class="stat-icon green">💵</div><div class="stat-num">R$${fmtValorExtra(totalArrecadado)||"0"}</div><div class="stat-label">Valor total</div></div>
     </div>
     <div class="filter-row">
-      <select onchange="renderRelatorioFolgasVendidasSemana(this.value,document.getElementById('fil-mes-fvs').value)"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
-      <select id="fil-mes-fvs" onchange="renderRelatorioFolgasVendidasSemana('${filtroFunc}',this.value)"><option value="todos">Todos os meses</option>${meses.map(m=>{const[y,mo]=m.split("-");return `<option value="${m}"${m===filtroMes?" selected":""}>${MN[parseInt(mo)-1]} ${y}</option>`;}).join("")}</select>
+      <select onchange="renderRelatorioFolgasVendidasSemana(this.value,${jsArrayLit(filtroMeses)})"><option value="todos">Todos os funcionários</option>${funcs.map(f=>`<option value="${f}"${f===filtroFunc?" selected":""}>${f}</option>`).join("")}</select>
+      ${renderFiltroMeses(meses,filtroMeses,arr=>`renderRelatorioFolgasVendidasSemana('${filtroFunc}',${arr})`)}
     </div>`;
   if(dados.length===0){h+=`<div class="aus-empty">📭 Nenhuma venda de folga em dia de semana registrada.</div>`;}
   else{
     if(filtroFunc!=="todos"){
-      h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Valor</th><th></th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.valor?"R$"+fmtValorExtra(r.valor):"—"}</td><td><button onclick="desfazerVendaFolgaSemana('${r.func}','${r.ds}','${filtroFunc}','${filtroMes}')" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↩ Desfazer</button></td></tr>`).join("")}</tbody></table>`;
+      h+=`<table class="aus-table"><thead><tr><th>Data</th><th>Funcionário</th><th>Setor</th><th>Valor</th><th></th></tr></thead><tbody>${dados.map(r=>`<tr><td>${fmtData(r.ds)}</td><td style="font-weight:700">${r.func}</td><td style="color:var(--text2)">${r.setor}</td><td>${r.valor?"R$"+fmtValorExtra(r.valor):"—"}</td><td><button onclick="desfazerVendaFolgaSemana('${r.func}','${r.ds}','${filtroFunc}',${jsArrayLit(filtroMeses)})" style="font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface2);color:var(--text2);cursor:pointer;font-family:inherit">↩ Desfazer</button></td></tr>`).join("")}</tbody></table>`;
     } else {
       const cont={};dados.forEach(r=>{cont[r.func]=(cont[r.func]||0)+1;});
       const entradas=Object.entries(cont).sort((a,b)=>b[1]-a[1]);
       h+=`<div class="fs-setor" style="margin-bottom:12px">
-        <div class="fs-setor-hd" onclick="fvSemanaResumoAberto=!fvSemanaResumoAberto;renderRelatorioFolgasVendidasSemana('${filtroFunc}','${filtroMes}')">
+        <div class="fs-setor-hd" onclick="fvSemanaResumoAberto=!fvSemanaResumoAberto;renderRelatorioFolgasVendidasSemana('${filtroFunc}',${jsArrayLit(filtroMeses)})">
           <div class="fs-setor-left"><span style="font-size:20px">💰</span>
             <div><div class="fs-setor-nm">Quem mais vendeu</div>
             <div class="fs-setor-sub">${entradas.length} funcionário${entradas.length!==1?"s":""}</div></div>
           </div>
           <span style="font-size:22px;color:var(--text3);transition:transform .2s;${fvSemanaResumoAberto?"transform:rotate(90deg)":""}">›</span>
         </div>
-        ${fvSemanaResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderRelatorioFolgasVendidasSemana('${n}','${filtroMes}')"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
+        ${fvSemanaResumoAberto?`<div class="fs-setor-body">${entradas.map(([n,c])=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;cursor:pointer" onclick="renderRelatorioFolgasVendidasSemana('${n}',${jsArrayLit(filtroMeses)})"><span style="font-weight:600">${n}</span><span style="display:flex;align-items:center;gap:6px"><span style="font-weight:800;color:var(--green)">${c} venda${c!==1?"s":""}</span><span style="color:var(--border-s);font-size:16px">›</span></span></div>`).join("")}</div>`:""}
       </div>`;
     }
   }
@@ -3600,34 +3653,32 @@ function renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes){
   h+=`</div></div>`;
   document.getElementById("modal").innerHTML=h;
 }
-function exportarFolgasVendidasXlsx(filtroFunc,filtroMes){
+function exportarFolgasVendidasXlsx(filtroFunc,filtroMeses){
   let dados=HISTORICO_FOLGAS_VENDIDAS;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const resumo=[["Quantidade de vendas",dados.length],["Valor total arrecadado (R$)",dados.reduce((s,r)=>s+(r.valor||0),0)]];
   const linhas=dados.map(r=>[fmtData(r.ds),r.func,r.setor,r.valor||0]);
   const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
-  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
-  exportarPlanilha(`vendas-folga-domingo${sufixoFunc}_${periodo}.xlsx`,"Vendas de Folga",resumo,["Data","Funcionário","Setor","Valor (R$)"],linhas);
+  exportarPlanilha(`vendas-folga-domingo${sufixoFunc}_${periodoArquivo(filtroMeses)}.xlsx`,"Vendas de Folga",resumo,["Data","Funcionário","Setor","Valor (R$)"],linhas);
 }
-function exportarFolgasVendidasSemanaXlsx(filtroFunc,filtroMes){
+function exportarFolgasVendidasSemanaXlsx(filtroFunc,filtroMeses){
   let dados=HISTORICO_FOLGAS_VENDIDAS_SEMANA;
   if(filtroFunc!=="todos")dados=dados.filter(h=>h.func===filtroFunc);
-  if(filtroMes!=="todos")dados=dados.filter(h=>h.ds.startsWith(filtroMes));
+  dados=dados.filter(h=>passaFiltroMeses(h.ds,filtroMeses));
   dados=[...dados].sort((a,b)=>a.ds.localeCompare(b.ds));
   const resumo=[["Quantidade de vendas",dados.length],["Valor total arrecadado (R$)",dados.reduce((s,r)=>s+(r.valor||0),0)]];
   const linhas=dados.map(r=>[fmtData(r.ds),r.func,r.setor,r.valor||0]);
   const sufixoFunc=filtroFunc!=="todos"?`_${sanitizarNomeArquivo(filtroFunc)}`:"";
-  const periodo=filtroMes==="todos"?"todos-os-periodos":nomeMesArquivo(filtroMes);
-  exportarPlanilha(`vendas-folga-semana${sufixoFunc}_${periodo}.xlsx`,"Vendas de Folga Semana",resumo,["Data","Funcionário","Setor","Valor (R$)"],linhas);
+  exportarPlanilha(`vendas-folga-semana${sufixoFunc}_${periodoArquivo(filtroMeses)}.xlsx`,"Vendas de Folga Semana",resumo,["Data","Funcionário","Setor","Valor (R$)"],linhas);
 }
 // Desfazer uma venda de folga de dia de semana a partir do relatório (não da
 // tela do dia). Se o mês/ano da venda for o que está carregado em memória
 // agora, reaproveita a limpeza completa (praça + FOLGAS_VENDIDAS) de
 // desfazerVendaDeFolgaDados; senão, só reflete no banco (nada em memória pra
 // limpar) — evita mexer em escala de um mês que nem está carregado.
-async function desfazerVendaFolgaSemana(nome,ds,filtroFunc,filtroMes){
+async function desfazerVendaFolgaSemana(nome,ds,filtroFunc,filtroMeses){
   const[ano,mes,dia]=ds.split("-").map(Number);
   const mi=mes-1,d=dia;
   if(ano===cy&&mi===cm){
@@ -3637,7 +3688,7 @@ async function desfazerVendaFolgaSemana(nome,ds,filtroFunc,filtroMes){
     await persistirFolgaVendida(nome,ds,false);
   }
   HISTORICO_FOLGAS_VENDIDAS_SEMANA=HISTORICO_FOLGAS_VENDIDAS_SEMANA.filter(h=>!(h.func===nome&&h.ds===ds));
-  renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMes);
+  renderRelatorioFolgasVendidasSemana(filtroFunc,filtroMeses);
   showToast("↩ Venda de folga desfeita.");
 }
 
