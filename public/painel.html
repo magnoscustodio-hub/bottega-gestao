@@ -1801,7 +1801,7 @@ function renderEsc(d,mi){
   h+=`<div class="sec bg2">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
       <span style="font-size:13px;font-weight:700;color:var(--text)">Ausências inesperadas</span>
-      <button class="btn-ausencia" onclick="openAusencia(${d},${mi})">⚠️ Registrar</button>
+      <button class="btn-ausencia" onclick="openAusencia(${d},${mi})">⚠️ Registrar ausência</button>
     </div>
     ${ausencias.map(n=>{
       const reg=HISTORICO.find(h=>h.func===n&&h.ds===ds);
