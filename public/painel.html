@@ -549,6 +549,7 @@ let HISTORICO_FOLGAS_VENDIDAS_SEMANA=[];
 let RESTAURANTE_LOGO_URL=null;
 let RESTAURANTE_SLUG=null;
 let RESTAURANTE_CIDADE="",RESTAURANTE_ENDERECO="",RESTAURANTE_TELEFONE="",RESTAURANTE_UF="";
+let RESTAURANTE_HORARIO_CORTE=16; // hora cheia (0-23) do corte Almoço/Jantar
 const _agora=new Date();
 let cm=_agora.getMonth(),cy=_agora.getFullYear(),dSel=null;
 // Turno (Almoço/Jantar) — filtro visual do dia selecionado, não uma trava.
@@ -1165,8 +1166,16 @@ function renderCal(){
   document.getElementById("cal").innerHTML=h;
 }
 
+// Turno (Almoço/Jantar) que a escala do dia deve abrir mostrando, segundo a
+// hora atual do relógio e o horário de corte configurável do restaurante.
+// Antes do corte -> Almoço; a partir do corte -> Jantar. Recalculado toda vez
+// que uma escala é aberta (selDay) — nunca fica "travado" numa escolha antiga.
+function turnoAtual(){
+  const corte=RESTAURANTE_HORARIO_CORTE??16;
+  return new Date().getHours()<corte?"a":"j";
+}
 function selDay(d){
-  dSel=d;renderCal();renderEsc(d,cm);
+  dSel=d;TURNO=turnoAtual();renderCal();renderEsc(d,cm);
   setTimeout(()=>{const el=document.getElementById("esc");if(el&&window.innerWidth<=620)el.scrollIntoView({behavior:"smooth",block:"start"});},80);
 }
 function distribuicaoAutomatica(dg,fechadas){
@@ -2969,6 +2978,16 @@ function renderConfigDiasFuncionamento(){
   const rows=window._diasFechadosRows||[];
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
     <div class="cal-modal-hd"><h3>🔒 Dias de funcionamento</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
+    <div class="master-only" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:4px">🕐 Horário de corte Almoço/Jantar</div>
+      <p class="msub" style="margin:0 0 8px">A partir desse horário, a escala do dia já abre mostrando o turno Jantar.</p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="cfg-horario-corte" class="minp" style="width:auto;flex:0 0 90px">
+          ${Array.from({length:24},(_,i)=>i).map(hh=>`<option value="${hh}"${hh===RESTAURANTE_HORARIO_CORTE?" selected":""}>${String(hh).padStart(2,"0")}h</option>`).join("")}
+        </select>
+        <button class="bok" style="padding:9px 16px;border-radius:var(--rs);border:none;font-weight:700;cursor:pointer;font-family:inherit" onclick="salvarHorarioCorteConfig()">Salvar</button>
+      </div>
+    </div>
     <p class="msub">Marque os dias em que o restaurante <strong>não</strong> funciona.</p>`;
   DIAS_FUNC_INFO.forEach(d=>{
     const row=rows.find(r=>r.dia_semana===d.k);
@@ -3030,6 +3049,14 @@ async function setTurnoFechadoConfig(dia,turno){
   row.turno=turno;
   FJ[dia]=turno;
   renderConfigDiasFuncionamento();
+  if(dSel)renderEsc(dSel,gm());
+}
+async function salvarHorarioCorteConfig(){
+  const v=parseInt(document.getElementById("cfg-horario-corte").value);
+  const{error}=await supabaseClient.from("restaurantes").update({horario_corte_turno:v}).eq("id",RESTAURANTE_ID);
+  if(error){avisoErro("Não foi possível salvar o horário de corte.");return;}
+  RESTAURANTE_HORARIO_CORTE=v;
+  showToast("✅ Horário de corte atualizado!");
   if(dSel)renderEsc(dSel,gm());
 }
 
@@ -4739,6 +4766,7 @@ async function boot(){
   RESTAURANTE_ENDERECO=restaurante.endereco||"";
   RESTAURANTE_TELEFONE=restaurante.telefone||"";
   RESTAURANTE_UF=restaurante.uf||"";
+  RESTAURANTE_HORARIO_CORTE=restaurante.horario_corte_turno??16;
   document.title=RESTAURANTE_NOME+" — Gestão de Salão";
   const h1=document.querySelector(".header-info h1");if(h1)h1.textContent=RESTAURANTE_NOME;
   const sub=document.querySelector(".header-info p");if(sub)sub.textContent=(restaurante.cidade||"")+" · Gestão de Salão";
