@@ -1178,7 +1178,12 @@ function turnoAtual(){
   return new Date().getHours()<corte?"a":"j";
 }
 function selDay(d){
-  dSel=d;TURNO=turnoAtual();renderCal();renderEsc(d,cm);
+  dSel=d;
+  // Só o dia de HOJE (data real) segue a hora do relógio -- abrir um dia
+  // passado ou futuro sempre começa no Almoço, sem depender de que horas são
+  // agora (a hora atual não tem nenhuma relação com um dia que não é hoje).
+  TURNO=agIsHoje(ds2s(cm,d))?turnoAtual():"a";
+  renderCal();renderEsc(d,cm);
   setTimeout(()=>{const el=document.getElementById("esc");if(el&&window.innerWidth<=620)el.scrollIntoView({behavior:"smooth",block:"start"});},80);
 }
 function distribuicaoAutomatica(dg,fechadas){
