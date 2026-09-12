@@ -53,10 +53,11 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .menu-acao-rapida{position:relative;flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
 .menu-acao-rapida:hover{background:rgba(255,255,255,.2)}
 .menu-acao-rapida:active{background:rgba(255,255,255,.3)}
-/* Badge de notificação (qtd de eventos pendentes) no botão "🎉 Eventos" —
-   ver atualizarBadgeEventos(). Anel na cor do header (--text, o próprio
-   fundo do .app-header) separa visualmente do botão por trás, padrão de
-   badge de app. Escondido por padrão no HTML; só aparece com contagem>0. */
+/* Badge de notificação (qtd de compromissos pendentes) nos botões "📅 Agenda"
+   e "🎉 Eventos" — ver atualizarBadgeAgenda()/atualizarBadgeEventos(). Anel
+   na cor do header (--text, o próprio fundo do .app-header) separa
+   visualmente do botão por trás, padrão de badge de app. Escondido por
+   padrão no HTML; só aparece com contagem>0. */
 .badge-notif{position:absolute;top:-6px;right:-6px;min-width:18px;height:18px;padding:0 4px;border-radius:10px;background:var(--red);color:white;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 0 0 2px var(--text)}
 
 /* MENU LATERAL (drawer) */
@@ -471,7 +472,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     </div>
     <div class="app-header-menu">
       <button class="menu-hamb" onclick="abrirDrawer()" title="Menu">☰</button>
-      <button class="menu-acao-rapida" onclick="openAgenda()">📅 Agenda</button>
+      <button class="menu-acao-rapida" onclick="openAgenda()">📅 Agenda<span id="badge-agenda" class="badge-notif" style="display:none"></span></button>
       <button class="menu-acao-rapida" onclick="abrirEventos()">🎉 Eventos<span id="badge-eventos" class="badge-notif" style="display:none"></span></button>
     </div>
   </div>
@@ -3893,35 +3894,42 @@ async function carregarAgenda(){
   if(error){avisoErro("Não foi possível carregar a agenda.");return;}
   AGENDA=(data||[]).map(agMapeiaLinha);
   atualizarBadgeEventos();
+  atualizarBadgeAgenda();
 }
-// Conta eventos "ativos" (nem concluído, nem cancelado) pro badge do botão
-// "🎉 Eventos" no header — mesma regra que agGetFiltrados() usa pra aba
-// Eventos, incluindo a dedução de série recorrente (só a próxima ocorrência
-// igual/depois de hoje conta; ocorrências passadas de uma série, não).
-// Independe de data pra eventos avulsos (sem grupoId) — passados ou
-// futuros, todos contam, igual a aba já mostra.
-function contarEventosAtivos(){
-  const eventos=AGENDA.filter(c=>c.tipo==="evento"&&!c.concluido&&!c.cancelado);
+// Conta compromissos "ativos" (nem concluído, nem cancelado) da AGENDA que
+// batem no filtro de tipo dado — núcleo compartilhado pelos badges dos
+// botões "📅 Agenda" e "🎉 Eventos" no header, incluindo a dedução de série
+// recorrente (só a próxima ocorrência igual/depois de hoje conta; ocorrências
+// passadas de uma série, não). Independe de data pra avulsos (sem grupoId)
+// — passados ou futuros, todos contam, igual a aba já mostra.
+function contarCompromissosAtivos(filtroTipo){
+  const compromissos=AGENDA.filter(c=>filtroTipo(c.tipo)&&!c.concluido&&!c.cancelado);
   const hoje=agHoje();
   const gruposContados=new Set();
   let total=0;
-  eventos.forEach(c=>{
+  compromissos.forEach(c=>{
     if(!c.grupoId){total++;return;}
     if(gruposContados.has(c.grupoId))return;
     if(c.data>=hoje){gruposContados.add(c.grupoId);total++;}
   });
   return total;
 }
-// Chamado sempre que carregarAgenda() roda (único ponto que atualiza
-// AGENDA) — mantém o badge em dia com qualquer mudança (novo evento,
-// concluir, reabrir, cancelar) sem precisar tocar em cada chamada.
-function atualizarBadgeEventos(){
-  const el=document.getElementById("badge-eventos");
+function contarEventosAtivos(){return contarCompromissosAtivos(t=>t==="evento");}
+// Mesma contagem, pro badge do botão "📅 Agenda" -- todos os tipos MENOS
+// evento, que já tem o próprio badge (senão contaria duas vezes).
+function contarAgendaAtiva(){return contarCompromissosAtivos(t=>t!=="evento");}
+// Escreve a contagem num badge (cap "9+"), escondendo quando zero.
+function atualizarBadgeContagem(elId,n){
+  const el=document.getElementById(elId);
   if(!el)return;
-  const n=contarEventosAtivos();
   el.textContent=n>9?"9+":n;
   el.style.display=n>0?"flex":"none";
 }
+// Chamados sempre que carregarAgenda() roda (único ponto que atualiza
+// AGENDA) — mantêm os badges em dia com qualquer mudança (novo item,
+// concluir, reabrir, cancelar) sem precisar tocar em cada chamada.
+function atualizarBadgeEventos(){atualizarBadgeContagem("badge-eventos",contarEventosAtivos());}
+function atualizarBadgeAgenda(){atualizarBadgeContagem("badge-agenda",contarAgendaAtiva());}
 async function migrarAgendaLocalStorage(){
   if(localStorage.getItem("bt_agenda_migrado"))return;
   let dadosAntigos=[];
