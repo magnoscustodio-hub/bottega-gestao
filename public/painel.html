@@ -2846,7 +2846,11 @@ function abrirConfigFuncionarios(){
 function renderConfigFuncionarios(){
   let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
     <div class="cal-modal-hd"><h3>👥 Funcionários</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div>
-    <p class="msub">Adicionar ou remover funcionários do restaurante.</p>`;
+    <p class="msub">Adicionar ou remover funcionários do restaurante.</p>
+    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:13px;font-weight:700;color:var(--text2)">👥 Total de funcionários</span>
+      <span style="font-size:18px;font-weight:800;color:var(--text)">${Object.values(EQ).reduce((s,eq)=>s+eq.m.length,0)}</span>
+    </div>`;
   Object.keys(EQ).forEach(k=>{
     const eq=EQ[k],aberto=window._configFuncSetorAberto===k;
     h+=`<div class="fs-setor">
