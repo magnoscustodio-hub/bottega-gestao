@@ -878,6 +878,20 @@ function removerDeQualquerPraca(nome,d,mi){
     ajustarEscalaManual(d,mi,tu,a=>{delete a.moves[nome];if(!a.removidos.includes(nome))a.removidos.push(nome);});
   });
 }
+// Inverso de removerDeQualquerPraca() — chamado ao apagar uma ausência, pra
+// devolver a pessoa à distribuição automática normal (como se a ausência
+// nunca tivesse existido). Só tira o NOME da lista "removidos" -- nunca mexe
+// em "moves" (nem da própria pessoa, nem de qualquer outra), então nenhum
+// ajuste manual feito por outro motivo (antes ou depois da ausência) é
+// desfeito por engano. Se a pessoa tinha uma posição manual customizada
+// antes da ausência, essa posição específica não é recuperada (foi
+// descartada no momento do registro) -- ela volta pela distribuição
+// automática padrão, decisão combinada com o usuário.
+function restaurarDeQualquerPraca(nome,d,mi){
+  ["a","j"].forEach(tu=>{
+    ajustarEscalaManual(d,mi,tu,a=>{a.removidos=a.removidos.filter(n=>n!==nome);});
+  });
+}
 function venderFolga(nome,d,mi){
   const ds=ds2s(mi,d);
   const tipo=(dnom(mi,d)==="Domingo"||!!nFer(ds))?"domingo":"semana";
@@ -2065,7 +2079,7 @@ function renderEsc(d,mi){
 function openAusencia(d,mi){
   const todos=Object.values(EQ).flatMap(e=>e.m);
   const ausentes=AUSENCIAS[`${mi}_${d}`]||[];
-  const opts=todos.filter(n=>!ausentes.includes(n)).map(n=>`<option value="${n}">${n}</option>`).join("");
+  const opts=todos.filter(n=>!ausentes.includes(n)).map(n=>`<option value="${n}">${n} — ${getSetorFunc(n)}</option>`).join("");
   const dStr=ds2s(mi,d);
   document.getElementById("modal").innerHTML=`
     <div class="mov" onclick="if(event.target===this)cMod()"><div class="mbox">
@@ -2125,6 +2139,7 @@ function remAusencia(nome,d,mi){
 function confirmarRemAusencia(nome,d,mi){
   const k=`${mi}_${d}`;
   if(AUSENCIAS[k])AUSENCIAS[k]=AUSENCIAS[k].filter(n=>n!==nome);
+  restaurarDeQualquerPraca(nome,d,mi);
   cMod();renderEsc(d,mi);renderCal();
   showToast("✅ Ausência de "+nome+" removida");
   persistirRemoverAusencia(nome,ds2s(mi,d));
@@ -2265,6 +2280,7 @@ function removerPeriodoAusencia(nome,ini,fim){
     const[ano,mes,dia]=ds.split("-").map(Number);
     const k=`${mes-1}_${dia}`;
     if(AUSENCIAS[k])AUSENCIAS[k]=AUSENCIAS[k].filter(n=>n!==nome);
+    restaurarDeQualquerPraca(nome,dia,mes-1);
   });
   HISTORICO=HISTORICO.filter(h=>!(h.func===nome&&diasIso.includes(h.ds)));
   fecharEdicaoAusencia();
