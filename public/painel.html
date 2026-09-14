@@ -521,6 +521,11 @@ let USER_ID=null;
 let NIVEL_ACESSO="master";
 let FUNC_ID_POR_NOME={};
 let CARGO_POR_NOME={};
+// Sub-função "Cumim" (auxiliar de garçom) -- disponível em qualquer setor,
+// não só Garçons. Em Garçons, participa do round-robin automático das
+// praças e some da contagem "GARÇONS"; em setor de suporte, não muda nada
+// na alocação (já é manual), só a cor do chip.
+let CUMIM_POR_NOME={};
 let DATA_INICIO_POR_NOME={};
 let DATA_SAIDA_POR_NOME={};
 let PAX={};DIAS.forEach(d=>{PAX[d]={a:0,j:0};});
@@ -1820,9 +1825,13 @@ function renderEsc(d,mi){
   </div>`;
 
   // MÉTRICAS
+  // Cumim (mesmo alocado nas praças pelo round-robin) não conta como garçom
+  // aqui -- dg continua completo pra não afetar a distribuição, só a métrica
+  // exibida é que desconta quem é Cumim.
+  const dgSemCumim=dg.filter(g=>!CUMIM_POR_NOME[g]);
   h+=`<div class="mrow">
     <div class="mc"><div class="ml">Pax esperado</div><div class="mv">${pax}</div><div class="ms">${fer?"feriado 100%":res>0?res+" res":"histórico"}</div></div>
-    <div class="mc ${dg.length<=3?"red":""}"><div class="ml">Garçons</div><div class="mv">${dg.length}</div><div class="ms">${totalF} de folga</div></div>
+    <div class="mc ${dgSemCumim.length<=3?"red":""}"><div class="ml">Garçons</div><div class="mv">${dgSemCumim.length}</div><div class="ms">${totalF} de folga</div></div>
     <div class="mc ${ocp>=85?"red":ocp>=60?"":"green"}"><div class="ml">Ocupação</div><div class="mv">${ocp}%</div><div class="ms">${Math.round(MAA*oc)} mesas</div></div>
   </div>`;
 
@@ -1947,7 +1956,7 @@ function renderEsc(d,mi){
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
-        const cor=sk?EQ[sk].c:EQ.garcons.c;
+        const cor=CUMIM_POR_NOME[g]?"var(--magenta)":(sk?EQ[sk].c:EQ.garcons.c);
         const isGarcom=sk==="garcons";
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!pertenceAoTurno(hi))return"";
@@ -2047,7 +2056,7 @@ function renderEsc(d,mi){
       // visual de qualquer outro colaborador comum, sem destaque nenhum.
       const skOrigem=Object.keys(EQ).find(k2=>EQ[k2].m.includes(g));
       if(skOrigem&&skOrigem!==k){
-        const corOrigem=EQ[skOrigem].c;
+        const corOrigem=CUMIM_POR_NOME[g]?"var(--magenta)":EQ[skOrigem].c;
         if(hi){
           return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
         }
@@ -2058,7 +2067,8 @@ function renderEsc(d,mi){
         const rotulo=cargo?`${g}<span style="opacity:.6;font-weight:500"> · ${cargo}</span>`:g;
         return `<span class="chip" style="background:${eq.c}0d;border:1px solid ${eq.c}4d"><span class="cdot" style="background:${eq.c}"></span>${rotulo}</span>`;
       }
-      return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);
+      const corNativo=CUMIM_POR_NOME[g]?"var(--magenta)":eq.c;
+      return hi?chipComHorario(g,corNativo,hi):chip(g,corNativo);
     }).join("");
     h+=`<div class="pc${nx&&extras.length===0?" px":""}" style="${cardStyle}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -2898,6 +2908,7 @@ function renderConfigFuncionarios(){
   const pracaIni=editando?((PD.find(p=>(p.gc||[]).includes(editando.nome))||{}).id||""):"";
   const dataInicioIni=editando?(DATA_INICIO_POR_NOME[editando.nome]||""):"";
   const dataSaidaIni=editando?(DATA_SAIDA_POR_NOME[editando.nome]||""):"";
+  const cumimIni=editando?!!CUMIM_POR_NOME[editando.nome]:false;
   h+=`<div class="master-only" style="border-top:1.5px solid var(--border);padding-top:12px;margin-top:8px">
     <div class="sec-title" style="margin-bottom:8px">${editando?"✏️ Editar funcionário":"+ Adicionar funcionário"}</div>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Nome</label>
@@ -2906,6 +2917,10 @@ function renderConfigFuncionarios(){
     <input id="nf-cargo" type="text" class="minp" placeholder="Ex: Garçom, Recepcionista..." value="${cargoIni}">
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Setor</label>
     <select id="nf-setor" class="msel">${Object.keys(EQ).map(k=>`<option value="${k}"${k===setorIni?" selected":""}>${EQ[k].l}</option>`).join("")}</select>
+    <div style="display:flex;align-items:center;gap:8px;margin:-4px 0 12px;padding:10px 12px;background:var(--magenta-bg);border:1.5px solid var(--magenta-br);border-radius:var(--rs)">
+      <input type="checkbox" id="nf-cumim" ${cumimIni?"checked":""} style="width:16px;height:16px;accent-color:var(--magenta);flex-shrink:0">
+      <label for="nf-cumim" style="font-size:12px;font-weight:600;color:var(--magenta);cursor:pointer">🧺 É Cumim (auxiliar de garçom)</label>
+    </div>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Praça preferencial (opcional)</label>
     <select id="nf-praca" class="msel"><option value="">Nenhuma</option>${PD.map(p=>`<option value="${p.id}"${p.id===pracaIni?" selected":""}>${p.n}</option>`).join("")}</select>
     <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Data de início (opcional)</label>
@@ -2925,6 +2940,7 @@ async function adicionarFuncionario(){
   const nome=document.getElementById("nf-nome").value.trim();
   const cargo=document.getElementById("nf-cargo").value.trim();
   const setorChave=document.getElementById("nf-setor").value;
+  const ehCumim=document.getElementById("nf-cumim").checked;
   const pracaId=document.getElementById("nf-praca").value;
   const dataInicio=document.getElementById("nf-data-inicio").value;
   const dataSaida=document.getElementById("nf-data-saida").value;
@@ -2932,7 +2948,7 @@ async function adicionarFuncionario(){
   const setorId=EQ[setorChave]&&EQ[setorChave].id;
   if(!setorId){avisoErro("Setor inválido.");return;}
   const{error}=await supabaseClient.from("funcionarios").insert({
-    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
+    restaurante_id:RESTAURANTE_ID,nome,cargo:cargo||null,setor_id:setorId,eh_cumim:ehCumim,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
   });
   if(error){avisoErro("Não foi possível adicionar "+nome+".");return;}
   showToast("✅ "+nome+" adicionado(a)!");
@@ -2956,6 +2972,7 @@ async function salvarEdicaoFuncionario(){
   const nome=document.getElementById("nf-nome").value.trim();
   const cargo=document.getElementById("nf-cargo").value.trim();
   const setorChave=document.getElementById("nf-setor").value;
+  const ehCumim=document.getElementById("nf-cumim").checked;
   const pracaId=document.getElementById("nf-praca").value;
   const dataInicio=document.getElementById("nf-data-inicio").value;
   const dataSaida=document.getElementById("nf-data-saida").value;
@@ -2963,7 +2980,7 @@ async function salvarEdicaoFuncionario(){
   const setorId=EQ[setorChave]&&EQ[setorChave].id;
   if(!setorId){avisoErro("Setor inválido.");return;}
   const{error}=await supabaseClient.from("funcionarios").update({
-    nome,cargo:cargo||null,setor_id:setorId,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
+    nome,cargo:cargo||null,setor_id:setorId,eh_cumim:ehCumim,praca_preferencial_id:pracaId||null,data_inicio:dataInicio||null,data_saida:dataSaida||null,
   }).eq("id",editando.id);
   if(error){avisoErro("Não foi possível salvar as alterações de "+editando.nome+".");return;}
   showToast("✅ "+nome+" atualizado(a)!");
@@ -4557,11 +4574,11 @@ async function removerMenuEvento(id){
 async function carregarEquipeEPracas(){
   const{data:setoresRows}=await supabaseClient
     .from("setores")
-    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio,data_saida)")
+    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio,data_saida,eh_cumim)")
     .eq("restaurante_id",RESTAURANTE_ID)
     .order("ordem");
 
-  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};DATA_INICIO_POR_NOME={};DATA_SAIDA_POR_NOME={};
+  EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};CUMIM_POR_NOME={};DATA_INICIO_POR_NOME={};DATA_SAIDA_POR_NOME={};
   const pracaPreferidaPorFuncionario={};
   (setoresRows||[]).forEach(s=>{
     EQ[s.chave]={id:s.id,l:s.nome,e:s.emoji||"",c:s.cor||"#4A4A4A",min:s.min_funcionarios||1,semprExtra:!!s.sempre_extra,fimSemana:!!s.fim_semana,m:[]};
@@ -4569,6 +4586,7 @@ async function carregarEquipeEPracas(){
       EQ[s.chave].m.push(f.nome);
       FUNC_ID_POR_NOME[f.nome]=f.id;
       if(f.cargo)CARGO_POR_NOME[f.nome]=f.cargo;
+      if(f.eh_cumim)CUMIM_POR_NOME[f.nome]=true;
       if(f.data_inicio)DATA_INICIO_POR_NOME[f.nome]=f.data_inicio;
       if(f.data_saida)DATA_SAIDA_POR_NOME[f.nome]=f.data_saida;
       if(f.praca_preferencial_id){
