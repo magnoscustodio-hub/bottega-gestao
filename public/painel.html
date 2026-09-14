@@ -1131,6 +1131,18 @@ function chipComHorario(nome,cor,hi){
   const icone=hi.pontual?"📌":"⏰";
   return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
 }
+// Chip do Cumim -- fundo INTEIRO tingido de magenta (não só a bolinha), pra
+// destacar de relance numa praça/setor com vários funcionários. Mesmo
+// padrão visual (fundo claro + borda + texto na cor) já usado pras pessoas
+// "de outro setor" alocadas manualmente.
+function chipCumim(rotulo,hi){
+  const estilo="background:var(--magenta-bg);border:1.5px solid var(--magenta-br);color:var(--magenta)";
+  if(hi){
+    const icone=hi.pontual?"📌":"⏰";
+    return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${estilo}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} a partir das ${hi.hora}</span></span>`;
+  }
+  return `<span class="chip" style="${estilo}"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span>`;
+}
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
 function mudarTurnoDia(v){TURNO=v;if(dSel)renderEsc(dSel,cm);}
@@ -1956,16 +1968,18 @@ function renderEsc(d,mi){
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
-        const cor=CUMIM_POR_NOME[g]?"var(--magenta)":(sk?EQ[sk].c:EQ.garcons.c);
+        const cor=sk?EQ[sk].c:EQ.garcons.c;
         const isGarcom=sk==="garcons";
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!pertenceAoTurno(hi))return"";
         if(!isGarcom&&sk){
+          if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[sk].e}`,hi);
           if(hi){
             return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
           }
           return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
+        if(CUMIM_POR_NOME[g])return chipCumim(g,hi);
         if(hi){
           return chipComHorario(g,cor,hi);
         }
@@ -2056,7 +2070,8 @@ function renderEsc(d,mi){
       // visual de qualquer outro colaborador comum, sem destaque nenhum.
       const skOrigem=Object.keys(EQ).find(k2=>EQ[k2].m.includes(g));
       if(skOrigem&&skOrigem!==k){
-        const corOrigem=CUMIM_POR_NOME[g]?"var(--magenta)":EQ[skOrigem].c;
+        if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[skOrigem].e}`,hi);
+        const corOrigem=EQ[skOrigem].c;
         if(hi){
           return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} a partir das ${hi.hora}</span></span>`;
         }
@@ -2067,8 +2082,8 @@ function renderEsc(d,mi){
         const rotulo=cargo?`${g}<span style="opacity:.6;font-weight:500"> · ${cargo}</span>`:g;
         return `<span class="chip" style="background:${eq.c}0d;border:1px solid ${eq.c}4d"><span class="cdot" style="background:${eq.c}"></span>${rotulo}</span>`;
       }
-      const corNativo=CUMIM_POR_NOME[g]?"var(--magenta)":eq.c;
-      return hi?chipComHorario(g,corNativo,hi):chip(g,corNativo);
+      if(CUMIM_POR_NOME[g])return chipCumim(g,hi);
+      return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);
     }).join("");
     h+=`<div class="pc${nx&&extras.length===0?" px":""}" style="${cardStyle}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
