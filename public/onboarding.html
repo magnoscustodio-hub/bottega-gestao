@@ -341,6 +341,13 @@ const SETORES=[
   {k:'boqb',n:'Boqueta Bebida',e:'🥂',c:'#7C3AED'},
   {k:'boqc',n:'Boqueta Comida',e:'🍲',c:'#BA7517'},
   {k:'fax',n:'Faxina',e:'🧹',c:'#888780'},
+  // "Lideranças" (maitre, chef de fila, supervisor...) é um setor nativo com
+  // elenco fixo igual a Garçons/Bar/etc (aparece normal em "Sua equipe"),
+  // mas SEMPRE criado mesmo com 0 funcionários (criarSempre) -- painel.html
+  // já reconhece a chave "liderancas" (gerada automaticamente a partir
+  // deste nome) e aplica o acabamento visual especial (cargo/badge) sozinho,
+  // sem precisar de mais nenhuma configuração aqui.
+  {k:'liderancas',n:'Lideranças',e:'👔',c:'#B5893A',criarSempre:true},
   // Sempre extra (sem headcount fixo, ninguém escala fixo aqui por padrão) —
   // por isso nem aparece na etapa "Sua equipe" (ver renderEquipe) e é criada
   // sempre, independente de quantidade (ver finalizarCadastro). Editável
@@ -866,9 +873,12 @@ async function finalizarCadastro(){
     // Setores fixos + setores extras com equipe configurada. Setores
     // "sempre extra" (Esterilização) são criados sempre, independente de
     // quantidade — não têm headcount fixo por definição (ver renderEquipe).
+    // "criarSempre" (Lideranças) é diferente: TEM headcount fixo normal
+    // (aparece em "Sua equipe" como qualquer setor), só força a criação
+    // mesmo que o dono deixe em 0 nomes — sem virar "sempre extra" no banco.
     const setoresParaCriar=[];
     SETORES.forEach((s,i)=>{
-      if((D.equipe[s.k]||0)>0||s.semprExtra){
+      if((D.equipe[s.k]||0)>0||s.semprExtra||s.criarSempre){
         setoresParaCriar.push({restaurante_id:restauranteId,chave:s.k,nome:s.n,emoji:s.e,cor:s.c,ordem:i,sempre_extra:!!s.semprExtra,fim_semana:!!s.fimSemana,_nomes:D.nomes[s.k]});
       }
     });
