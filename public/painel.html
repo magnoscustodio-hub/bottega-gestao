@@ -2675,9 +2675,10 @@ async function salvarFolgas(){
   // atual) — navegar pra outro mês antes de clicar Salvar não descarta o
   // que já tinha sido marcado em nenhum deles, tudo é persistido junto.
   const chaves=Object.keys(fsCache);
-  cMod();if(dSel)renderEsc(dSel,cm);renderCal();
-  showToast(chaves.length<=1?"✅ Folgas de "+MN[fsMes]+" atualizadas!":"✅ Folgas atualizadas!");
-  await Promise.all(chaves.map(async chave=>{
+  // Atualiza tudo em memória (FOLGAS + limpeza de ajuste manual antigo)
+  // ANTES de renderizar -- senão o primeiro repaint usa dado velho e só
+  // corrige numa renderização seguinte (reabrir o dia, por exemplo).
+  chaves.forEach(chave=>{
     const[anoStr,miStr]=chave.split("-");
     const ano=parseInt(anoStr,10),mi=parseInt(miStr,10);
     const dadosMes=fsCache[chave];
@@ -2697,8 +2698,22 @@ async function salvarFolgas(){
         diasRemovidos.forEach(d=>{
           if((FOLGAS_VENDIDAS[`${cm}_${d}`]||[]).includes(g)) desfazerVendaDeFolgaDados(g,d,cm);
         });
+        // Dias NOVOS de folga: devolve a pessoa à distribuição automática
+        // normal caso ela estivesse presa a um ajuste manual antigo --
+        // mesmo cuidado que salvarFeriasFuncionario()/confirmarAusencia()
+        // já tomam, só que faltava aqui.
+        const diasAdicionados=dadosMes[g].filter(d=>!diasAntigos[g].includes(d));
+        diasAdicionados.forEach(d=>removerDeQualquerPraca(g,d,cm));
       });
     }
+  });
+  cMod();if(dSel)renderEsc(dSel,cm);renderCal();
+  showToast(chaves.length<=1?"✅ Folgas de "+MN[fsMes]+" atualizadas!":"✅ Folgas atualizadas!");
+  await Promise.all(chaves.map(async chave=>{
+    const[anoStr,miStr]=chave.split("-");
+    const ano=parseInt(anoStr,10),mi=parseInt(miStr,10);
+    const dadosMes=fsCache[chave];
+    const nomes=Object.keys(dadosMes);
     await Promise.all(nomes.map(g=>persistirFolgasFuncionario(g,mi,ano,dadosMes[g])));
   }));
   fsCache={};
