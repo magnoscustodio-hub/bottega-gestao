@@ -567,6 +567,9 @@ let fsAba="folgas";
 // pra navegar entre meses sem perder edição não salva de nenhum deles; tudo é
 // persistido de uma vez em salvarFolgas() e descartado ao fechar/cancelar.
 let fsCache={};
+// Diálogo "Replicar padrão de folgas": quantos meses à frente e se sobrescreve
+// meses que já têm folgas (padrão: 3 meses, sem sobrescrever).
+let fsReplQtd=3,fsReplSobrescrever=false;
 
 let EQ={};
 // Horários especiais de entrada — carregado do Supabase (tabela horarios_especiais) em boot().
@@ -2503,9 +2506,12 @@ function exportarEventosXlsx(filtroMeses,filtroStatus){
 // sempre escopados ao mês ativo cm/cy (carregarOperacional). Isso garante
 // que trocar de mês aqui não interfere em nada da escala/distribuição
 // automática de outros meses.
+// Devolve false se a consulta ao banco falhou (o rascunho do mês fica vazio
+// nesse caso) -- quem precisa de certeza do estado real (Replicar) confere.
 async function fsCarregarMes(mi,ano){
   const chave=`${ano}-${mi}`;
-  if(fsCache[chave]){fsDias=fsCache[chave];return;}
+  if(fsCache[chave]){fsDias=fsCache[chave];return true;}
+  let ok=true;
   const base={};
   Object.keys(EQ).forEach(k=>EQ[k].m.forEach(g=>{base[g]=[];}));
   if(mi===cm&&ano===cy){
@@ -2516,7 +2522,7 @@ async function fsCarregarMes(mi,ano){
     const inicio=`${ano}-${String(mi+1).padStart(2,"0")}-01`;
     const fim=`${ano}-${String(mi+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
     const{data,error}=await supabaseClient.from("folgas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim);
-    if(error){avisoErro("Não foi possível carregar as folgas de "+MN[mi]+"/"+ano+".");}
+    if(error){avisoErro("Não foi possível carregar as folgas de "+MN[mi]+"/"+ano+".");ok=false;}
     (data||[]).forEach(r=>{
       const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome||!(nome in base))return;
       const dia=parseInt(r.data.split("-")[2],10);
@@ -2525,6 +2531,7 @@ async function fsCarregarMes(mi,ano){
   }
   fsCache[chave]=base;
   fsDias=base;
+  return ok;
 }
 async function openFolgasMes(){
   fsMes=gm();fsAno=cy;fsFunc=null;fsSetorAberto=null;fsCache={};
@@ -2539,7 +2546,8 @@ function renderModalFolgas(){
       <button onclick="mudarFsMes(-1)">‹</button>
       <span class="cal-m-title">${MN[fsMes]} ${fsAno}</span>
       <button onclick="mudarFsMes(1)">›</button>
-    </div>`;
+    </div>
+    <button onclick="abrirReplicarFolgas()" style="width:100%;padding:10px;margin-bottom:14px;border-radius:var(--rs);border:1.5px solid var(--gold-br);background:var(--gold-bg);color:var(--gold);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">🔁 Replicar padrão pros próximos meses</button>`;
   Object.keys(EQ).forEach(k=>{
     const eq=EQ[k],aberto=fsSetorAberto===k;
     const total=eq.m.reduce((acc,g)=>acc+(fsDias[g]||[]).length,0);
@@ -2669,6 +2677,114 @@ async function mudarFsMes(delta){
   fsMes+=delta;if(fsMes>11){fsMes=0;fsAno++;}if(fsMes<0){fsMes=11;fsAno--;}
   await fsCarregarMes(fsMes,fsAno);
   if(fsFunc)renderCalFunc();else renderModalFolgas();
+}
+// --- Replicar padrão de folgas (por DIA DA SEMANA) pros próximos meses ---
+// Só preenche o rascunho (fsCache) dos meses de destino -- nada é gravado até
+// o "Salvar ✓" da tela de Folgas (que já persiste todos os meses do
+// rascunho), então dá pra navegar pelos meses, ajustar exceções e cancelar.
+// Dias 1..N do mês agrupados por dia da semana (0=domingo ... 6=sábado).
+function fsDiasPorSemana(mi,ano){
+  const tot=new Date(ano,mi+1,0).getDate();
+  const por={0:[],1:[],2:[],3:[],4:[],5:[],6:[]};
+  for(let d=1;d<=tot;d++)por[new Date(ano,mi,d).getDay()].push(d);
+  return por;
+}
+// Um dia da semana entra no padrão se estiver marcado em MAIS DA METADE das
+// ocorrências dele no mês (na prática, 3+ de 4 ou 5): tolera 1 exceção
+// (trabalhou uma segunda) sem espalhar uma folga avulsa pra todas as semanas.
+// Padrões alternados (ex: domingo sim, domingo não) não são detectados.
+function fsPadraoSemanal(dias,mi,ano){
+  const por=fsDiasPorSemana(mi,ano);
+  const padrao=[];
+  for(let w=0;w<7;w++){
+    const marcados=por[w].filter(d=>dias.includes(d)).length;
+    if(marcados*2>por[w].length)padrao.push(w);
+  }
+  return padrao;
+}
+// Dias do mês (mi/ano) que caem nos dias da semana do padrão.
+function fsDiasDoPadrao(padrao,mi,ano){
+  const por=fsDiasPorSemana(mi,ano);
+  return padrao.flatMap(w=>por[w]).sort((a,b)=>a-b);
+}
+function fsMesesDestino(qtd){
+  const out=[];let mi=fsMes,ano=fsAno;
+  for(let i=0;i<qtd;i++){mi++;if(mi>11){mi=0;ano++;}out.push({mi,ano});}
+  return out;
+}
+const FS_DIA_SEMANA_ABREV=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
+function abrirReplicarFolgas(){renderReplicarFolgas();}
+function renderReplicarFolgas(){
+  const origem=fsCache[`${fsAno}-${fsMes}`]||fsDias;
+  const destinos=fsMesesDestino(fsReplQtd);
+  const rotuloDestinos=destinos.map(m=>MN[m.mi].slice(0,3)+"/"+String(m.ano).slice(2)).join(", ");
+  let linhas="",comPadrao=0,semFolga=0;
+  Object.keys(EQ).forEach(k=>EQ[k].m.forEach(nome=>{
+    const dias=origem[nome]||[];
+    if(!dias.length){semFolga++;return;}
+    const padrao=fsPadraoSemanal(dias,fsMes,fsAno);
+    const avulsos=dias.filter(d=>!padrao.includes(new Date(fsAno,fsMes,d).getDay())).length;
+    const nota=avulsos?`<span style="color:var(--text3);font-weight:500"> (+${avulsos} avulso${avulsos>1?"s":""}, não replicado${avulsos>1?"s":""})</span>`:"";
+    if(padrao.length){
+      comPadrao++;
+      linhas+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="font-weight:700">${nome}</span><span style="text-align:right;color:var(--text2)">${padrao.map(w=>FS_DIA_SEMANA_ABREV[w]).join(", ")}${nota}</span></div>`;
+    }else{
+      linhas+=`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px"><span style="font-weight:700">${nome}</span><span style="text-align:right;color:var(--text3)">sem padrão semanal${nota}</span></div>`;
+    }
+  }));
+  let h=`<div class="mov" onclick="if(event.target===this)renderModalFolgas()"><div class="mbox">
+    <h3>🔁 Replicar padrão de folgas</h3>
+    <p class="msub">Copia, por dia da semana, o padrão de <strong>${MN[fsMes]} ${fsAno}</strong> pros meses seguintes.</p>
+    <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Replicar para os próximos</label>
+    <select class="msel" style="margin-bottom:4px" onchange="fsReplQtd=parseInt(this.value);renderReplicarFolgas()">${[1,2,3,6,12].map(n=>`<option value="${n}"${n===fsReplQtd?" selected":""}>${n} ${n===1?"mês":"meses"}</option>`).join("")}</select>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">→ ${rotuloDestinos}</div>
+    <div style="font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Padrão detectado</div>
+    <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rs);padding:4px 12px;margin-bottom:8px;max-height:220px;overflow-y:auto">
+      ${linhas||`<div style="padding:8px 0;font-size:12px;color:var(--text3)">Nenhum funcionário com folga marcada neste mês.</div>`}
+    </div>
+    ${semFolga?`<div style="font-size:11px;color:var(--text3);margin-bottom:12px">${semFolga} funcionário${semFolga>1?"s":""} sem folgas neste mês: não ${semFolga>1?"serão alterados":"será alterado"}.</div>`:""}
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:12px;margin-bottom:6px;cursor:pointer"><input type="checkbox" ${fsReplSobrescrever?"checked":""} onchange="fsReplSobrescrever=this.checked;renderReplicarFolgas()" style="margin-top:2px"><span><strong>Sobrescrever meses que já têm folgas</strong><br><span style="color:var(--text3)">${fsReplSobrescrever?"Marcado: as folgas já lançadas nos meses de destino serão substituídas pelo padrão.":"Desmarcado: quem já tem folgas naquele mês é mantido."}</span></span></label>
+    <p style="font-size:11px;color:var(--text3);margin:10px 0 0">Nada é gravado até você clicar em "Salvar ✓" na tela de Folgas.</p>
+    <div class="macts"><button onclick="renderModalFolgas()">Cancelar</button><button class="bok" onclick="replicarFolgas()"${comPadrao?"":" disabled style=\"opacity:.4;cursor:not-allowed\""}>Replicar</button></div>
+  </div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+async function replicarFolgas(){
+  const chaveOrigem=`${fsAno}-${fsMes}`;
+  const origem=fsCache[chaveOrigem]||fsDias;
+  const padroes={};
+  Object.keys(origem).forEach(nome=>{
+    const p=fsPadraoSemanal(origem[nome]||[],fsMes,fsAno);
+    if(p.length)padroes[nome]=p;
+  });
+  if(!Object.keys(padroes).length)return;
+  const destinos=fsMesesDestino(fsReplQtd);
+  // Fase 1: carrega o estado REAL de todos os meses de destino. Se algum falhar
+  // (rede), aborta sem tocar em nada -- aplicar num rascunho vazio por engano
+  // e depois salvar apagaria as folgas que já existem naquele mês.
+  for(const{mi,ano}of destinos){
+    const ok=await fsCarregarMes(mi,ano);
+    if(!ok){
+      delete fsCache[`${ano}-${mi}`];
+      fsDias=fsCache[chaveOrigem];
+      avisoErro("Não foi possível replicar: falha ao carregar "+MN[mi]+"/"+ano+". Nada foi alterado.");
+      return;
+    }
+  }
+  // Fase 2 (síncrona): aplica o padrão no rascunho de cada mês.
+  let preenchidos=0,mantidos=0;
+  destinos.forEach(({mi,ano})=>{
+    const alvo=fsCache[`${ano}-${mi}`];
+    Object.keys(padroes).forEach(nome=>{
+      if(!(nome in alvo))return;
+      if(alvo[nome].length>0&&!fsReplSobrescrever){mantidos++;return;}
+      alvo[nome]=fsDiasDoPadrao(padroes[nome],mi,ano);
+      preenchidos++;
+    });
+  });
+  fsDias=fsCache[chaveOrigem]; // fsCarregarMes troca fsDias como efeito colateral
+  renderModalFolgas();
+  showToast(`🔁 Padrão replicado: ${preenchidos} preenchido${preenchidos!==1?"s":""}${mantidos?`, ${mantidos} já tinha${mantidos!==1?"m":""} folgas (mantido${mantidos!==1?"s":""})`:""}. Revise e clique em Salvar.`);
 }
 async function salvarFolgas(){
   // Salva todos os meses visitados nesta abertura da tela (não só o mês
