@@ -1104,7 +1104,7 @@ function inputWrapExtraHtml(alvo,d,mi){
 }
 
 const bdg=(t,c)=>`<span class="bdg ${c}">${t}</span>`;
-const chip=(n,c)=>`<span class="chip"><span class="cdot" style="background:${c}"></span>${n}</span>`;
+const chip=(n,c,nome=n)=>{const mv=atribMover(nome);return`<span class="chip"${mv.onclick} style="${mv.estiloExtra}"><span class="cdot" style="background:${c}"></span>${n}</span>`;};
 function horarioEspecialDe(nome,d,mi,dn,fer,isDom){
   // Pontual: {hora (entrada), saida (opcional)}. Fixo semanal só tem entrada.
   const pontual=(HORARIOS_PONTUAIS[`${mi}_${d}`]||{})[nome];
@@ -1155,25 +1155,27 @@ function pertenceAoTurno(hi){
 function rotuloHorario(hi){
   return hi.saida?`${hi.hora} às ${hi.saida}`:`a partir das ${hi.hora}`;
 }
-function chipComHorario(nome,cor,hi){
+function chipComHorario(rotulo,cor,hi,nome=rotulo){
   const icone=hi.pontual?"📌":"⏰";
-  return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${nome}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} ${rotuloHorario(hi)}</span></span>`;
+  const mv=atribMover(nome);
+  return `<span class="chip"${mv.onclick} style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${mv.estiloExtra}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${rotulo}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} ${rotuloHorario(hi)}</span></span>`;
 }
 // Chip do Cumim -- fundo INTEIRO tingido de magenta (não só a bolinha), pra
 // destacar de relance numa praça/setor com vários funcionários. Mesmo
 // padrão visual (fundo claro + borda + texto na cor) já usado pras pessoas
 // "de outro setor" alocadas manualmente.
-function chipCumim(rotulo,hi){
-  const estilo="background:var(--magenta-bg);border:1.5px solid var(--magenta-br);color:var(--magenta)";
+function chipCumim(rotulo,hi,nome=rotulo){
+  const mv=atribMover(nome);
+  const estilo=`background:var(--magenta-bg);border:1.5px solid var(--magenta-br);color:var(--magenta);${mv.estiloExtra}`;
   if(hi){
     const icone=hi.pontual?"📌":"⏰";
-    return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${estilo}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} ${rotuloHorario(hi)}</span></span>`;
+    return `<span class="chip"${mv.onclick} style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;${estilo}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${icone} ${rotuloHorario(hi)}</span></span>`;
   }
-  return `<span class="chip" style="${estilo}"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span>`;
+  return `<span class="chip"${mv.onclick} style="${estilo}"><span class="cdot" style="background:var(--magenta)"></span>${rotulo}</span>`;
 }
 
 async function changeMes(){cm=gm();dSel=null;await carregarOperacional();renderCal();renderEmpty();}
-function mudarTurnoDia(v){TURNO=v;if(dSel)renderEsc(dSel,cm);}
+function mudarTurnoDia(v){TURNO=v;window._moverSel=null;if(dSel)renderEsc(dSel,cm);}
 function onRes(mi,d,tu){sRes(mi,d,tu,parseInt(document.getElementById("inp-res").value)||0);persistirReserva(ds2s(mi,d),tu==="a"?"almoco":"jantar",gRes(mi,d,tu));renderEsc(d,mi);renderCal();}
 
 function renderCal(){
@@ -1239,6 +1241,7 @@ function turnoAtual(){
 }
 function selDay(d){
   dSel=d;
+  window._moverSel=null; // troca de dia nunca deve carregar uma seleção de mover pendente
   // Só o dia de HOJE (data real) segue a hora do relógio -- abrir um dia
   // passado ou futuro sempre começa no Almoço, sem depender de que horas são
   // agora (a hora atual não tem nenhuma relação com um dia que não é hoje).
@@ -1440,11 +1443,58 @@ function removerDaPraca(pid,nome,d,mi,tu=gt()){
   renderModalEscala(d,mi,resolverEscala(d,mi,tu));
   scrollParaPracaEditada(window._pracaEditSel);
 }
+// Mutação pura de mover alguém pra uma praça/setor (pid: id de praça OU de
+// setor de suporte, a função não precisa distinguir) -- extraída de
+// moverParaPraca() pra ser reaproveitada pelo toque-pra-mover da escala
+// principal, sem herdar o re-render (que é específico do modal "Editar").
+// Mesmo ajuste salvo, mesma lógica de persistência nos dois fluxos.
+function aplicarMoverParaPraca(pid,nome,d,mi,tu=gt()){
+  ajustarEscalaManual(d,mi,tu,a=>{a.moves[nome]=pid;a.removidos=a.removidos.filter(n=>n!==nome);});
+}
 function moverParaPraca(pid,nome,d,mi,tu=gt()){
   if(!nome) return;
-  ajustarEscalaManual(d,mi,tu,a=>{a.moves[nome]=pid;a.removidos=a.removidos.filter(n=>n!==nome);});
+  aplicarMoverParaPraca(pid,nome,d,mi,tu);
   renderModalEscala(d,mi,resolverEscala(d,mi,tu));
   scrollParaPracaEditada(window._pracaEditSel);
+}
+// --- Toque-pra-mover (escala principal, sem abrir "Editar") ---
+// window._moverSel guarda o nome de quem está selecionado pra mover, ou null.
+// Tocar o chip de novo cancela; tocar o chip de OUTRA pessoa troca a seleção;
+// tocar uma praça/área de destino move e limpa a seleção. Consulta não ganha
+// onclick nenhum nos chips (mesmo corte de permissão do 🔒/✏️).
+function selecionarParaMover(nome){
+  window._moverSel=(window._moverSel===nome)?null:nome;
+  if(dSel)renderEsc(dSel,cm);
+}
+function cancelarSelecaoMover(){
+  window._moverSel=null;
+  if(dSel)renderEsc(dSel,cm);
+}
+function moverPessoaSelecionadaPara(pid,d,mi){
+  const nome=window._moverSel;
+  if(!nome)return;
+  aplicarMoverParaPraca(pid,nome,d,mi);
+  window._moverSel=null;
+  renderEsc(d,mi);
+}
+// Atributos (onclick + destaque visual) injetados em cada chip da escala
+// principal. nome é a identidade real da pessoa (pode diferir do rótulo
+// exibido, que às vezes leva um emoji de setor de origem junto).
+function atribMover(nome){
+  if(NIVEL_ACESSO==="consulta")return{onclick:"",estiloExtra:""};
+  const sel=window._moverSel===nome;
+  return{
+    onclick:` onclick="selecionarParaMover('${nome}')"`,
+    estiloExtra:`cursor:pointer;${sel?"box-shadow:0 0 0 2px var(--gold);":""}`,
+  };
+}
+// Botão "Mover aqui" — só desenhado dentro de um card quando alguém está
+// selecionado e esse card NÃO é onde a pessoa já está (evita um botão que
+// não faria nada). Área de toque grande (linha inteira), estilo tracejado
+// pra não ser confundido com os cartões normais da escala.
+function botaoMoverAqui(id,d,mi,jaEstaAqui){
+  if(NIVEL_ACESSO==="consulta"||!window._moverSel||jaEstaAqui)return"";
+  return`<button class="edit-only" onclick="moverPessoaSelecionadaPara('${id}',${d},${mi})" style="width:100%;padding:9px;margin-bottom:8px;border-radius:var(--rs);border:1.5px dashed var(--gold-br);background:var(--gold-bg);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">➜ Mover ${window._moverSel} pra cá</button>`;
 }
 function salvarEscalaManual(d,mi){
   cMod();renderEsc(d,mi);
@@ -1856,6 +1906,9 @@ function renderEsc(d,mi){
   const totalF=Object.values(folgasHoje).reduce((s,v)=>s+v.length,0);
   const ausencias=AUSENCIAS[`${mi}_${d}`]||[];
   const dist=resolverEscala(d,mi,tu,dg);
+  // Defensiva: se quem estava selecionado pra mover sumiu da escala (folga
+  // lançada por outra tela, por exemplo), descarta a seleção em silêncio.
+  if(window._moverSel&&!Object.values(dist).some(l=>l.includes(window._moverSel)))window._moverSel=null;
 
   let h=`<div class="esc">`;
 
@@ -1996,6 +2049,15 @@ function renderEsc(d,mi){
     h+=`</div></div>`;
   }
 
+  // Toque-pra-mover: banner avisando quem está selecionado, com saída rápida
+  // pra cancelar sem precisar tocar na pessoa nem numa área de destino.
+  if(window._moverSel){
+    h+=`<div class="sec bg2" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <span style="font-size:13px;font-weight:600;color:var(--text)">👆 <strong>${window._moverSel}</strong> selecionado(a) — toque na área de destino.</span>
+      <button onclick="cancelarSelecaoMover()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:700">✕ Cancelar</button>
+    </div>`;
+  }
+
   // PRAÇAS
   const ajustesHoje=getEscalaManual(d,mi);
   const temManual=!!(ajustesHoje&&(Object.keys(ajustesHoje.moves).length||ajustesHoje.removidos.length));
@@ -2030,6 +2092,7 @@ function renderEsc(d,mi){
     h+=`<div class="pc${p.pref?" pp":nx&&extras.length===0?" px":""}">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px"><span class="pn">${p.n}</span><span class="pc-icons">${p.pref?bdg("pref","in"):""}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${p.id}',${d},${mi})" title="Fechar ${p.n} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${p.id}')" title="Editar ${p.n}">✏️</button></span></div>
       <div class="ps">Cap. ${p.tl} pax · ${p.mesas||""}</div>
+      ${botaoMoverAqui(p.id,d,mi,gl.includes(window._moverSel))}
       <div>${gl.map(g=>{
         const sk=Object.keys(EQ).find(k=>EQ[k].m.includes(g));
         const cor=sk?EQ[sk].c:EQ.garcons.c;
@@ -2037,11 +2100,12 @@ function renderEsc(d,mi){
         const hi=horarioEspecialDe(g,d,mi,dn,fer,isDom);
         if(!pertenceAoTurno(hi))return"";
         if(!isGarcom&&sk){
-          if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[sk].e}`,hi);
+          if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[sk].e}`,hi,g);
+          const mv1=atribMover(g);
           if(hi){
-            return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} ${rotuloHorario(hi)}</span></span>`;
+            return `<span class="chip"${mv1.onclick} style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${cor}20;border:1.5px solid ${cor}60;color:${cor};${mv1.estiloExtra}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} ${rotuloHorario(hi)}</span></span>`;
           }
-          return `<span class="chip" style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
+          return `<span class="chip"${mv1.onclick} style="background:${cor}20;border:1.5px solid ${cor}60;color:${cor};${mv1.estiloExtra}"><span class="cdot" style="background:${cor}"></span>${g} ${EQ[sk].e}</span>`;
         }
         if(CUMIM_POR_NOME[g])return chipCumim(g,hi);
         if(hi){
@@ -2134,17 +2198,17 @@ function renderEsc(d,mi){
       // visual de qualquer outro colaborador comum, sem destaque nenhum.
       const skOrigem=Object.keys(EQ).find(k2=>EQ[k2].m.includes(g));
       if(skOrigem&&skOrigem!==k){
-        if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[skOrigem].e}`,hi);
-        const corOrigem=EQ[skOrigem].c;
+        if(CUMIM_POR_NOME[g])return chipCumim(`${g} ${EQ[skOrigem].e}`,hi,g);
+        const corOrigem=EQ[skOrigem].c,mv2=atribMover(g);
         if(hi){
-          return `<span class="chip" style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} ${rotuloHorario(hi)}</span></span>`;
+          return `<span class="chip"${mv2.onclick} style="display:flex;flex-direction:column;align-items:flex-start;padding:4px 9px;gap:0;background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem};${mv2.estiloExtra}"><span style="display:flex;align-items:center;gap:4px"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span><span style="font-size:9px;font-weight:700;color:var(--gold);margin-left:12px">${hi.pontual?"📌":"⏰"} ${rotuloHorario(hi)}</span></span>`;
         }
-        return `<span class="chip" style="background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span>`;
+        return `<span class="chip"${mv2.onclick} style="background:${corOrigem}20;border:1.5px solid ${corOrigem}60;color:${corOrigem};${mv2.estiloExtra}"><span class="cdot" style="background:${corOrigem}"></span>${g} ${EQ[skOrigem].e}</span>`;
       }
       if(isLid){
-        const cargo=CARGO_POR_NOME[g];
+        const cargo=CARGO_POR_NOME[g],mv3=atribMover(g);
         const rotulo=cargo?`${g}<span style="opacity:.6;font-weight:500"> · ${cargo}</span>`:g;
-        return `<span class="chip" style="background:${eq.c}0d;border:1px solid ${eq.c}4d"><span class="cdot" style="background:${eq.c}"></span>${rotulo}</span>`;
+        return `<span class="chip"${mv3.onclick} style="background:${eq.c}0d;border:1px solid ${eq.c}4d;${mv3.estiloExtra}"><span class="cdot" style="background:${eq.c}"></span>${rotulo}</span>`;
       }
       if(CUMIM_POR_NOME[g])return chipCumim(g,hi);
       return hi?chipComHorario(g,eq.c,hi):chip(g,eq.c);
@@ -2155,6 +2219,7 @@ function renderEsc(d,mi){
         <span class="pc-icons">${nx&&extras.length===0?bdg("Extra","dn"):""}<button class="edit-only icon-btn" onclick="toggleAreaFechada('${eq.id}',${d},${mi})" title="Fechar ${l} hoje">🔒</button><button class="edit-only icon-btn" onclick="openEditarEscala(${d},${mi},'${k}')" title="Editar ${l}">✏️</button></span>
       </div>
       <div class="ps">${disp.length}/${eq.m.length} disp.</div>
+      ${botaoMoverAqui(k,d,mi,disp.includes(window._moverSel))}
       <div>${chipsHtml}${chipsExtrasHtml(extras,k,d,mi)}
       ${inputWrapExtraHtml(k,d,mi)}
       </div>
