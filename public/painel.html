@@ -4904,7 +4904,11 @@ const MANUT_URLS={};         // path -> {url,ate} (URL assinada de 1h, em cache)
 const MANUT_ARQUIVOS={};     // id -> File (foto já baixada, pra o share sair na hora do toque)
 const MANUT_FOTO_MAX=1600,MANUT_FOTO_QUALIDADE=0.8;
 
-const manutPodeEditar=()=>NIVEL_ACESSO!=="consulta";
+// Criar pedido (com foto): os três níveis. Concluir/reabrir/excluir: só master e
+// gerencial. Lista branca nos dois (nível desconhecido não ganha permissão nenhuma),
+// espelhando as policies de RLS de supabase/manutencoes*.sql.
+const manutPodeCriar=()=>["master","gerencial","consulta"].includes(NIVEL_ACESSO);
+const manutPodeEditar=()=>["master","gerencial"].includes(NIVEL_ACESSO);
 const manutEsc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 function manutMapeia(r){
   return{id:r.id,descricao:r.descricao,fotoPath:r.foto_path||null,concluido:!!r.concluido,concluidoEm:r.concluido_em||null,criadoEm:r.created_at};
@@ -4974,7 +4978,7 @@ function renderManutencaoModal(){
   const abertos=MANUTENCOES.filter(m=>!m.concluido);
   const concluidos=MANUTENCOES.filter(m=>m.concluido).sort((a,b)=>(b.concluidoEm||"").localeCompare(a.concluidoEm||""));
   const lista=MANUT_ABA==="abertos"?abertos:concluidos;
-  const editar=manutPodeEditar();
+  const editar=manutPodeEditar(),criar=manutPodeCriar();
   let itens="";
   if(!MANUT_DISPONIVEL){
     itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">Não foi possível carregar os pedidos de manutenção. Tente de novo mais tarde.</div>`;
@@ -5016,13 +5020,13 @@ function renderManutencaoModal(){
         <button class="ag-filtro mt-aba-concluidos${MANUT_ABA==="concluidos"?" ativo":""}" onclick="manutSetAba('concluidos')">Concluídos (${concluidos.length})</button>
       </div>
       <div class="ag-lista">${itens}</div>
-      ${editar&&MANUT_DISPONIVEL?`<button class="ag-fab mt-novo" onclick="manutNovo()">+ Novo pedido</button>`:""}
+      ${criar&&MANUT_DISPONIVEL?`<button class="ag-fab mt-novo" onclick="manutNovo()">+ Novo pedido</button>`:""}
     </div></div>`;
 }
 
 // --- Formulário de novo pedido ---
 function manutNovo(){
-  if(!manutPodeEditar())return;
+  if(!manutPodeCriar())return;
   MANUT_FORM={descricao:"",foto:null,previewUrl:null,processando:false,salvando:false};
   renderManutencaoForm();
 }
@@ -5099,7 +5103,7 @@ async function manutFotoEscolhida(input){
   if(MANUT_FORM){MANUT_FORM.processando=false;renderManutencaoForm();}
 }
 async function manutSalvar(){
-  if(!manutPodeEditar()||!MANUT_FORM||MANUT_FORM.salvando||MANUT_FORM.processando)return;
+  if(!manutPodeCriar()||!MANUT_FORM||MANUT_FORM.salvando||MANUT_FORM.processando)return;
   const descricao=(MANUT_FORM.descricao||"").trim();
   if(!descricao){avisoErro("Descreva o problema.");return;}
   MANUT_FORM.salvando=true;
