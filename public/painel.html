@@ -53,8 +53,19 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .menu-acao-rapida{position:relative;flex:1;padding:10px 8px;border-radius:var(--rs);border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.1);color:white;font-size:13px;cursor:pointer;font-family:inherit;font-weight:700;text-align:center;transition:background .15s;-webkit-tap-highlight-color:transparent}
 .menu-acao-rapida:hover{background:rgba(255,255,255,.2)}
 .menu-acao-rapida:active{background:rgba(255,255,255,.3)}
-/* Badge de notificação (qtd de compromissos pendentes) nos botões "📅 Agenda"
-   e "🎉 Eventos" — ver atualizarBadgeAgenda()/atualizarBadgeEventos(). Anel
+.menu-acao-rapida .mi{margin-right:4px}
+/* Com 3 botões na linha, em telas estreitas (<=480px) o ícone vai EM CIMA do
+   rótulo, 11px, e os três ficam com a mesma largura (medido: 79px cada a 375px;
+   a 360px o "Manutenção" só cabe com padding lateral de 2px). Acima disso
+   continua em linha ("🔧 Manutenção"), como os outros dois sempre foram. */
+@media(max-width:480px){
+  .menu-acao-rapida{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;padding:6px 2px;line-height:1.15;min-width:0}
+  .menu-acao-rapida .mi{margin-right:0;font-size:16px}
+  .app-header-menu .menu-hamb{height:auto;align-self:stretch}
+}
+/* Badge de notificação (qtd de pendentes) nos botões "📅 Agenda",
+   "🔧 Manutenção" e "🎉 Eventos" — ver atualizarBadgeAgenda()/
+   atualizarBadgeManutencao()/atualizarBadgeEventos(). Anel
    na cor do header (--text, o próprio fundo do .app-header) separa
    visualmente do botão por trás, padrão de badge de app. Escondido por
    padrão no HTML; só aparece com contagem>0. */
@@ -472,8 +483,9 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     </div>
     <div class="app-header-menu">
       <button class="menu-hamb" onclick="abrirDrawer()" title="Menu">☰</button>
-      <button class="menu-acao-rapida" onclick="openAgenda()">📅 Agenda<span id="badge-agenda" class="badge-notif" style="display:none"></span></button>
-      <button class="menu-acao-rapida" onclick="abrirEventos()">🎉 Eventos<span id="badge-eventos" class="badge-notif" style="display:none"></span></button>
+      <button class="menu-acao-rapida" onclick="openAgenda()"><span class="mi">📅</span><span>Agenda</span><span id="badge-agenda" class="badge-notif" style="display:none"></span></button>
+      <button class="menu-acao-rapida" onclick="abrirManutencao()"><span class="mi">🔧</span><span>Manutenção</span><span id="badge-manutencao" class="badge-notif" style="display:none"></span></button>
+      <button class="menu-acao-rapida" onclick="abrirEventos()"><span class="mi">🎉</span><span>Eventos</span><span id="badge-eventos" class="badge-notif" style="display:none"></span></button>
     </div>
   </div>
 
@@ -4881,6 +4893,305 @@ async function removerMenuEvento(id){
   abrirModalEvento(id);
 }
 
+// ===== MANUTENÇÃO: pedidos (foto opcional + descrição), Abertos/Concluídos =====
+// Tabela manutencoes + bucket privado "manutencoes" (supabase/manutencoes.sql).
+// master/gerencial criam/concluem/excluem; consulta só vê e compartilha.
+let MANUTENCOES=[];
+let MANUT_ABA="abertos";
+let MANUT_DISPONIVEL=true;   // false se a consulta à tabela falhou (ex: SQL ainda não rodado)
+let MANUT_FORM=null;         // {descricao,foto(Blob),previewUrl,processando,salvando} enquanto o formulário está aberto
+const MANUT_URLS={};         // path -> {url,ate} (URL assinada de 1h, em cache)
+const MANUT_ARQUIVOS={};     // id -> File (foto já baixada, pra o share sair na hora do toque)
+const MANUT_FOTO_MAX=1600,MANUT_FOTO_QUALIDADE=0.8;
+
+const manutPodeEditar=()=>NIVEL_ACESSO!=="consulta";
+const manutEsc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function manutMapeia(r){
+  return{id:r.id,descricao:r.descricao,fotoPath:r.foto_path||null,concluido:!!r.concluido,concluidoEm:r.concluido_em||null,criadoEm:r.created_at};
+}
+async function carregarManutencoes(){
+  const{data,error}=await supabaseClient.from("manutencoes").select("*").eq("restaurante_id",RESTAURANTE_ID).order("created_at",{ascending:false});
+  if(error){MANUT_DISPONIVEL=false;MANUTENCOES=[];atualizarBadgeManutencao();return false;}
+  MANUT_DISPONIVEL=true;
+  MANUTENCOES=(data||[]).map(manutMapeia);
+  atualizarBadgeManutencao();
+  return true;
+}
+// Badge: pedidos ABERTOS (não concluídos). Reaproveita atualizarBadgeContagem,
+// o mesmo componente dos badges de Agenda e Eventos.
+function contarManutencoesAbertas(){return MANUTENCOES.filter(m=>!m.concluido).length;}
+function atualizarBadgeManutencao(){atualizarBadgeContagem("badge-manutencao",contarManutencoesAbertas());}
+
+function manutFmtData(iso){
+  const d=new Date(iso);
+  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+}
+function manutQuando(iso){
+  const d=new Date(iso),h=new Date();
+  const dias=Math.round((new Date(h.getFullYear(),h.getMonth(),h.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/86400000);
+  return dias<=0?"hoje":dias===1?"ontem":`há ${dias} dias`;
+}
+async function manutUrlAssinada(path,segundos){
+  const c=MANUT_URLS[path];
+  if(segundos===3600&&c&&c.ate>Date.now())return c.url;
+  const{data,error}=await supabaseClient.storage.from("manutencoes").createSignedUrl(path,segundos);
+  if(error||!data)return null;
+  if(segundos===3600)MANUT_URLS[path]={url:data.signedUrl,ate:Date.now()+55*60*1000};
+  return data.signedUrl;
+}
+// Uma chamada só pra todas as miniaturas da lista.
+async function manutPrepararUrls(){
+  const paths=MANUTENCOES.filter(m=>m.fotoPath&&!(MANUT_URLS[m.fotoPath]&&MANUT_URLS[m.fotoPath].ate>Date.now())).map(m=>m.fotoPath);
+  if(!paths.length)return;
+  const{data}=await supabaseClient.storage.from("manutencoes").createSignedUrls(paths,3600);
+  (data||[]).forEach(x=>{if(x&&x.signedUrl&&x.path)MANUT_URLS[x.path]={url:x.signedUrl,ate:Date.now()+55*60*1000};});
+}
+// Baixa a foto em segundo plano pra navigator.share({files}) poder rodar logo
+// no toque (alguns navegadores só aceitam o share colado ao gesto do usuário).
+function manutPrefetchArquivos(){
+  if(!(navigator.canShare&&navigator.share))return;
+  MANUTENCOES.filter(m=>m.fotoPath&&!MANUT_ARQUIVOS[m.id]).slice(0,20).forEach(async m=>{
+    try{
+      const url=MANUT_URLS[m.fotoPath]&&MANUT_URLS[m.fotoPath].url;if(!url)return;
+      const blob=await(await fetch(url)).blob();
+      MANUT_ARQUIVOS[m.id]=new File([blob],"manutencao.jpg",{type:blob.type||"image/jpeg"});
+    }catch(e){}
+  });
+}
+
+async function abrirManutencao(){
+  await carregarManutencoes();
+  MANUT_ABA="abertos";MANUT_FORM=null;
+  if(MANUT_DISPONIVEL)await manutPrepararUrls();
+  renderManutencaoModal();
+  manutPrefetchArquivos();
+}
+function manutFechar(){manutDescartarForm();cMod();}
+function manutSetAba(a){MANUT_ABA=a;renderManutencaoModal();}
+
+function renderManutencaoModal(){
+  if(MANUT_FORM){renderManutencaoForm();return;}
+  const abertos=MANUTENCOES.filter(m=>!m.concluido);
+  const concluidos=MANUTENCOES.filter(m=>m.concluido).sort((a,b)=>(b.concluidoEm||"").localeCompare(a.concluidoEm||""));
+  const lista=MANUT_ABA==="abertos"?abertos:concluidos;
+  const editar=manutPodeEditar();
+  let itens="";
+  if(!MANUT_DISPONIVEL){
+    itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">Não foi possível carregar os pedidos de manutenção. Tente de novo mais tarde.</div>`;
+  }else if(lista.length===0){
+    itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">${MANUT_ABA==="abertos"?"Nenhum pedido em aberto.":"Nenhum pedido concluído."}</div>`;
+  }else{
+    lista.forEach(m=>{
+      const url=m.fotoPath&&MANUT_URLS[m.fotoPath]?MANUT_URLS[m.fotoPath].url:null;
+      const thumb=url
+        ?`<img src="${url}" alt="Foto do pedido" loading="lazy" onclick="abrirLightbox('${url}')" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;cursor:pointer;border:1px solid var(--border)">`
+        :`<div style="width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotoPath?"📷":"🔧"}</div>`;
+      const btn="padding:6px 9px;border-radius:20px;border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit";
+      itens+=`<div class="mt-item" data-id="${m.id}" style="background:var(--surface);border-radius:var(--r);border:1.5px solid var(--border);padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}">
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          ${thumb}
+          <div style="flex:1;min-width:0">
+            <div class="mt-desc" style="font-size:14px;font-weight:600;color:var(--text);line-height:1.35;white-space:pre-wrap;word-break:break-word">${manutEsc(m.descricao)}</div>
+            <div class="mt-meta" style="font-size:11px;color:var(--text3);margin-top:4px">${m.concluido?`Concluído em ${manutFmtData(m.concluidoEm||m.criadoEm)} · aberto em ${manutFmtData(m.criadoEm)}`:`${manutFmtData(m.criadoEm)} · ${manutQuando(m.criadoEm)}`}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+          ${editar?(m.concluido
+            ?`<button class="mt-reabrir" onclick="manutAlternar('${m.id}',false)" style="${btn}">↩ Reabrir</button>`
+            :`<button class="mt-concluir" onclick="manutAlternar('${m.id}',true)" style="${btn};border-color:var(--green-br);background:var(--green-bg);color:var(--green)">✓ Concluir</button>`):""}
+          <button class="mt-whats" onclick="manutCompartilhar('${m.id}')" style="${btn}">📲 WhatsApp</button>
+          ${editar?`<button class="mt-excluir" onclick="manutConfirmarExcluir('${m.id}')" style="${btn};color:var(--red)">🗑 Excluir</button>`:""}
+        </div>
+      </div>`;
+    });
+  }
+  document.getElementById("modal").innerHTML=`
+    <div class="mov" onclick="if(event.target===this)manutFechar()"><div class="mbox">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:16px;font-weight:800;color:var(--text)">🔧 Manutenção</div>
+        <button onclick="manutFechar()" style="background:var(--surface2);border:1.5px solid var(--border-s);border-radius:50%;width:32px;height:32px;cursor:pointer;font-size:18px;font-weight:700;display:flex;align-items:center;justify-content:center">✕</button>
+      </div>
+      <div class="ag-filtros">
+        <button class="ag-filtro mt-aba-abertos${MANUT_ABA==="abertos"?" ativo":""}" onclick="manutSetAba('abertos')">Abertos (${abertos.length})</button>
+        <button class="ag-filtro mt-aba-concluidos${MANUT_ABA==="concluidos"?" ativo":""}" onclick="manutSetAba('concluidos')">Concluídos (${concluidos.length})</button>
+      </div>
+      <div class="ag-lista">${itens}</div>
+      ${editar&&MANUT_DISPONIVEL?`<button class="ag-fab mt-novo" onclick="manutNovo()">+ Novo pedido</button>`:""}
+    </div></div>`;
+}
+
+// --- Formulário de novo pedido ---
+function manutNovo(){
+  if(!manutPodeEditar())return;
+  MANUT_FORM={descricao:"",foto:null,previewUrl:null,processando:false,salvando:false};
+  renderManutencaoForm();
+}
+function manutDescartarForm(){
+  if(MANUT_FORM&&MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
+  MANUT_FORM=null;
+}
+function manutCancelarForm(){manutDescartarForm();renderManutencaoModal();}
+function renderManutencaoForm(){
+  const f=MANUT_FORM;
+  const btnFoto="flex:1;padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit";
+  document.getElementById("modal").innerHTML=`
+    <div class="mov" onclick="if(event.target===this)manutFechar()"><div class="mbox">
+      <h3>🔧 Novo pedido de manutenção</h3>
+      <p class="msub">Uma foto ajuda quem vai consertar (opcional).</p>
+      <input type="file" id="mt-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="manutFotoEscolhida(this)">
+      <input type="file" id="mt-foto-gal" accept="image/*" style="display:none" onchange="manutFotoEscolhida(this)">
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="mt-tirar" onclick="document.getElementById('mt-foto-cam').click()" style="${btnFoto}">📷 Tirar foto</button>
+        <button class="mt-galeria" onclick="document.getElementById('mt-foto-gal').click()" style="${btnFoto}">🖼️ Galeria</button>
+      </div>
+      ${f.processando?`<div class="mt-processando" style="font-size:12px;color:var(--text3);margin-bottom:10px">Processando a foto...</div>`:""}
+      ${f.previewUrl?`<div style="position:relative;margin-bottom:10px"><img class="mt-previa" src="${f.previewUrl}" alt="Prévia da foto" style="width:100%;max-height:220px;object-fit:cover;border-radius:var(--rs);border:1px solid var(--border)"><button class="mt-remover-foto" onclick="manutRemoverFoto()" style="position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:14px;cursor:pointer">✕</button></div>`:""}
+      <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Descrição</label>
+      <textarea id="mt-desc" class="minp" rows="4" placeholder="Ex: Freezer da cozinha não está gelando" oninput="MANUT_FORM.descricao=this.value" style="resize:vertical">${manutEsc(f.descricao)}</textarea>
+      <div class="macts"><button onclick="manutCancelarForm()">Cancelar</button><button class="bok mt-salvar" id="mt-salvar" onclick="manutSalvar()"${f.salvando||f.processando?" disabled":""}>${f.salvando?"Salvando...":"Salvar"}</button></div>
+    </div></div>`;
+}
+function manutRemoverFoto(){
+  if(MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
+  MANUT_FORM.foto=null;MANUT_FORM.previewUrl=null;
+  renderManutencaoForm();
+}
+// Foto de celular é grande: reduz pra no máximo MANUT_FOTO_MAX no lado maior e
+// regrava em JPEG antes do envio. createImageBitmap aplica a orientação do EXIF
+// (foto tirada em pé não chega deitada).
+async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO_QUALIDADE){
+  let fonte=null,w,h,urlTmp=null,bmp=null;
+  if(typeof createImageBitmap==="function"){
+    try{bmp=await createImageBitmap(file,{imageOrientation:"from-image"});}catch(e){bmp=null;}
+  }
+  if(bmp){fonte=bmp;w=bmp.width;h=bmp.height;}
+  else{
+    urlTmp=URL.createObjectURL(file);
+    fonte=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("imagem"));i.src=urlTmp;});
+    w=fonte.naturalWidth;h=fonte.naturalHeight;
+  }
+  const esc=Math.min(1,max/Math.max(w,h));
+  const cw=Math.max(1,Math.round(w*esc)),ch=Math.max(1,Math.round(h*esc));
+  const canvas=document.createElement("canvas");canvas.width=cw;canvas.height=ch;
+  const ctx=canvas.getContext("2d");
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,cw,ch);
+  ctx.drawImage(fonte,0,0,cw,ch);
+  if(bmp&&bmp.close)bmp.close();
+  if(urlTmp)URL.revokeObjectURL(urlTmp);
+  const blob=await new Promise(res=>canvas.toBlob(res,"image/jpeg",qualidade));
+  if(!blob)throw new Error("canvas");
+  return blob;
+}
+async function manutFotoEscolhida(input){
+  const arquivo=input.files&&input.files[0];
+  input.value="";
+  if(!arquivo||!MANUT_FORM)return;
+  if(!arquivo.type.startsWith("image/")){avisoErro("Escolha uma imagem.");return;}
+  MANUT_FORM.processando=true;renderManutencaoForm();
+  try{
+    const blob=await manutComprimirImagem(arquivo);
+    if(!MANUT_FORM)return; // fechou o formulário no meio
+    if(MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
+    MANUT_FORM.foto=blob;MANUT_FORM.previewUrl=URL.createObjectURL(blob);
+  }catch(e){
+    avisoErro("Não foi possível ler esta imagem. Tente outra foto.");
+  }
+  if(MANUT_FORM){MANUT_FORM.processando=false;renderManutencaoForm();}
+}
+async function manutSalvar(){
+  if(!manutPodeEditar()||!MANUT_FORM||MANUT_FORM.salvando||MANUT_FORM.processando)return;
+  const descricao=(MANUT_FORM.descricao||"").trim();
+  if(!descricao){avisoErro("Descreva o problema.");return;}
+  MANUT_FORM.salvando=true;
+  const b=document.getElementById("mt-salvar");if(b){b.disabled=true;b.textContent="Salvando...";}
+  let fotoPath=null;
+  if(MANUT_FORM.foto){
+    fotoPath=`${RESTAURANTE_ID}/${crypto.randomUUID()}.jpg`;
+    const{error:up}=await supabaseClient.storage.from("manutencoes").upload(fotoPath,MANUT_FORM.foto,{contentType:"image/jpeg"});
+    if(up){MANUT_FORM.salvando=false;renderManutencaoForm();avisoErro("Não foi possível enviar a foto. O pedido não foi salvo.");return;}
+  }
+  const{error}=await supabaseClient.from("manutencoes").insert({restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,descricao,foto_path:fotoPath});
+  if(error){
+    if(fotoPath)await supabaseClient.storage.from("manutencoes").remove([fotoPath]); // não deixa foto órfã
+    MANUT_FORM.salvando=false;renderManutencaoForm();
+    avisoErro("Não foi possível salvar o pedido.");return;
+  }
+  manutDescartarForm();
+  await carregarManutencoes();
+  MANUT_ABA="abertos";
+  await manutPrepararUrls();
+  renderManutencaoModal();
+  manutPrefetchArquivos();
+  showToast("✅ Pedido de manutenção salvo!");
+}
+
+// --- Concluir / reabrir / excluir ---
+async function manutAlternar(id,concluir){
+  if(!manutPodeEditar())return;
+  const upd=concluir?{concluido:true,concluido_em:new Date().toISOString()}:{concluido:false,concluido_em:null};
+  const{data,error}=await supabaseClient.from("manutencoes").update(upd).eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para atualizar este pedido.");return;}
+  await carregarManutencoes();
+  renderManutencaoModal();
+  showToast(concluir?"✅ Pedido concluído!":"↩ Pedido reaberto");
+}
+function manutConfirmarExcluir(id){
+  if(!manutPodeEditar())return;
+  document.getElementById("modal").innerHTML=`<div class="mov" onclick="if(event.target===this)renderManutencaoModal()"><div class="mbox">
+    <h3>🗑️ Excluir pedido</h3>
+    <p class="msub">Esse pedido (e a foto, se tiver) será apagado. Essa ação não pode ser desfeita.</p>
+    <div class="macts"><button onclick="renderManutencaoModal()">Cancelar</button><button class="brd mt-confirmar-excluir" onclick="manutExcluir('${id}')">Sim, excluir</button></div>
+  </div></div>`;
+}
+async function manutExcluir(id){
+  if(!manutPodeEditar())return;
+  const m=MANUTENCOES.find(x=>x.id===id);
+  // Linha primeiro: se a permissão negar, a foto continua intacta. Foto depois,
+  // sem travar nada se a remoção falhar (sobra um arquivo solto, sem pedido).
+  const{data,error}=await supabaseClient.from("manutencoes").delete().eq("id",id).select("id");
+  if(error||!data||data.length===0){avisoErro("Sem permissão para excluir este pedido.");renderManutencaoModal();return;}
+  if(m&&m.fotoPath){
+    try{await supabaseClient.storage.from("manutencoes").remove([m.fotoPath]);}catch(e){}
+    delete MANUT_URLS[m.fotoPath];
+  }
+  delete MANUT_ARQUIVOS[id];
+  await carregarManutencoes();
+  renderManutencaoModal();
+  showToast("🗑️ Pedido excluído");
+}
+
+// --- WhatsApp ---
+function manutTextoWhatsapp(m){
+  const rest=RESTAURANTE_NOME?` — ${RESTAURANTE_NOME}`:"";
+  return `🔧 Pedido de manutenção${rest}\n\n${m.descricao}\n\nAberto em ${manutFmtData(m.criadoEm)}`;
+}
+// Caminho principal: Web Share API com arquivo (foto + texto juntos no menu de
+// compartilhar do celular, onde a pessoa escolhe o WhatsApp e o contato).
+// Fallback (navegador sem suporte a arquivo): wa.me com o texto e, se houver
+// foto, um link assinado de 7 dias (o de 1h da tela expiraria cedo demais).
+async function manutCompartilhar(id){
+  const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
+  const texto=manutTextoWhatsapp(m);
+  let arquivo=MANUT_ARQUIVOS[id]||null;
+  if(!arquivo&&m.fotoPath&&navigator.canShare&&navigator.share){
+    try{
+      const url=await manutUrlAssinada(m.fotoPath,3600);
+      if(url){const blob=await(await fetch(url)).blob();arquivo=new File([blob],"manutencao.jpg",{type:blob.type||"image/jpeg"});MANUT_ARQUIVOS[id]=arquivo;}
+    }catch(e){arquivo=null;}
+  }
+  const dados=arquivo?{files:[arquivo],text:texto,title:"Pedido de manutenção"}:null;
+  if(dados&&navigator.canShare&&navigator.canShare(dados)){
+    try{await navigator.share(dados);return;}
+    catch(e){if(e&&e.name==="AbortError")return;} // cancelou: não abre mais nada; outro erro cai no fallback
+  }
+  let link="";
+  if(m.fotoPath){
+    const u=await manutUrlAssinada(m.fotoPath,7*24*3600);
+    if(u)link=`\n\n📷 Foto: ${u}`;
+  }
+  window.open("https://wa.me/?text="+encodeURIComponent(texto+link),"_blank");
+}
+
 async function carregarEquipeEPracas(){
   const{data:setoresRows}=await supabaseClient
     .from("setores")
@@ -5175,6 +5486,8 @@ async function boot(){
 
   await migrarAgendaLocalStorage();
   await carregarAgenda();
+  // Badge de Manutenção já no boot (falha silenciosa se a tabela ainda não existir).
+  await carregarManutencoes();
   renderSeletorMes();
   renderCal();renderEmpty();
 }
