@@ -92,6 +92,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .mt-acoes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
 .mt-acoes button:last-child:nth-child(odd){grid-column:1/-1}
 .mt-acoes button{padding:8px 6px;border-radius:20px;border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+/* MANUTENÇÃO: modo "Selecionar" (envio de vários pedidos por WhatsApp). */
+.ag-filtro.mt-sel-btn{margin-left:auto;padding:6px 9px}
+.ag-filtro.mt-sel-btn.on{background:var(--blue-bg);border-color:var(--blue-br);color:var(--blue)}
+.mt-selbar{display:flex;align-items:center;gap:10px;margin:2px 0 10px;font-size:13px}
+.mt-todos{display:flex;align-items:center;gap:8px;background:none;border:none;padding:4px 0;font-size:13px;font-weight:700;color:var(--blue);cursor:pointer;font-family:inherit}
+.mt-contagem{margin-left:auto;font-size:12px;color:var(--text2);font-weight:600}
+.mt-caixa{width:22px;height:22px;border-radius:6px;border:2px solid var(--border-s);background:var(--surface);flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;line-height:1}
+.mt-caixa.on{background:var(--blue);border-color:var(--blue)}
+.mt-enviar:disabled{opacity:.4;cursor:not-allowed}
 /* Lightbox com várias fotos (Manutenção): setas, contador. */
 .lightbox-nav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:white;font-size:24px;cursor:pointer;z-index:1101;display:none;align-items:center;justify-content:center}
 .lightbox-nav.prev{left:10px}.lightbox-nav.next{right:10px}
@@ -4948,9 +4957,17 @@ let MANUT_ABA="abertos";
 let MANUT_DISPONIVEL=true;   // false se a consulta à tabela falhou (ex: SQL ainda não rodado)
 let MANUT_FORM=null;         // formulário aberto: {id|null,descricao,existentes[paths],novas[{blob,previewUrl}],processando(n),salvando}
 const MANUT_URLS={};         // path -> {url,ate} (URL assinada de 1h, em cache)
-const MANUT_ARQUIVOS={};     // id -> {chave,files[File]} (fotos já baixadas, pra o share sair na hora do toque)
+const MANUT_ARQUIVOS={};     // path -> File (fotos já baixadas, pra o share sair na hora do toque)
+const MANUT_ARQ_EM_CURSO={}; // path -> Promise (download em andamento, evita baixar duas vezes)
+let MANUT_SEL=null;          // modo "Selecionar" (aba Abertos): null = desligado; senão Set de ids marcados
+let MANUT_CONFIRMA=null;     // resolve da caixa de confirmação aberta (aviso antes de compartilhar)
+let MANUT_ENVIANDO=false;    // trava toque duplo em "Enviar"
 const MANUT_FOTOS_MAX=5;
 const MANUT_FOTO_MAX=2000,MANUT_FOTO_QUALIDADE=0.8;
+// Envio de vários pedidos: limites fáceis de ajustar.
+const MANUT_MAX_ARQUIVOS=10;        // máx. de arquivos num navigator.share (canShare ainda tem a palavra final)
+const MANUT_MAX_URL_WHATSAPP=2000;  // fallback wa.me: tamanho máx. da URL se levar links de foto
+const MANUT_LINK_MIN=400;           // piso do tamanho de um link assinado (real ~443): evita assinar à toa
 
 // Criar: os três níveis. Concluir/reabrir/excluir: só master e gerencial. Lista
 // branca nos dois (nível desconhecido não ganha nada), espelhando as policies de
@@ -5004,16 +5021,26 @@ async function manutPrepararUrls(){
   const{data}=await supabaseClient.storage.from("manutencoes").createSignedUrls(paths,3600);
   (data||[]).forEach(x=>{if(x&&x.signedUrl&&x.path)MANUT_URLS[x.path]={url:x.signedUrl,ate:Date.now()+55*60*1000};});
 }
-// Baixa as fotos do pedido como File (pra navigator.share). Devolve todas ou lança.
-async function manutBaixarArquivos(m){
-  const files=[];
-  for(let i=0;i<m.fotos.length;i++){
-    const url=manutUrlCache(m.fotos[i])||await manutUrlAssinada(m.fotos[i],3600);
+// Baixa uma foto como File (pra navigator.share), com cache por caminho: o mesmo
+// arquivo serve ao envio individual e ao envio de vários pedidos. Lança se falhar.
+function manutArquivo(path){
+  if(MANUT_ARQUIVOS[path])return Promise.resolve(MANUT_ARQUIVOS[path]);
+  if(MANUT_ARQ_EM_CURSO[path])return MANUT_ARQ_EM_CURSO[path];
+  const p=(async()=>{
+    const url=manutUrlCache(path)||await manutUrlAssinada(path,3600);
     if(!url)throw new Error("url");
     const blob=await(await fetch(url)).blob();
-    files.push(new File([blob],`manutencao-${i+1}.jpg`,{type:blob.type||"image/jpeg"}));
-  }
-  MANUT_ARQUIVOS[m.id]={chave:m.fotos.join("|"),files};
+    return MANUT_ARQUIVOS[path]=new File([blob],"manutencao.jpg",{type:blob.type||"image/jpeg"});
+  })();
+  MANUT_ARQ_EM_CURSO[path]=p;
+  const limpa=()=>{delete MANUT_ARQ_EM_CURSO[path];};
+  p.then(limpa,limpa);
+  return p;
+}
+// Todas as fotos do pedido, em ordem (lança se alguma falhar).
+async function manutBaixarArquivos(m){
+  const files=[];
+  for(const p of m.fotos)files.push(await manutArquivo(p));
   return files;
 }
 // Pré-baixa em segundo plano pra o share sair no toque (alguns navegadores só
@@ -5025,22 +5052,34 @@ function manutPrefetchArquivos(){
   for(const m of MANUTENCOES.filter(x=>!x.concluido)){
     if(orcamento<=0)break;
     if(!m.fotos.length||m.fotos.length>orcamento)continue;
-    const c=MANUT_ARQUIVOS[m.id];
-    if(c&&c.chave===m.fotos.join("|"))continue;
+    if(m.fotos.every(p=>MANUT_ARQUIVOS[p]))continue;
     orcamento-=m.fotos.length;
     manutBaixarArquivos(m).catch(()=>{});
   }
 }
+// Ao marcar pedidos pra envio em lote: baixa as fotos da seleção. Se o total ainda
+// cabe no limite de arquivos, todas; senão só a 1ª de cada pedido (o que o envio
+// vai mandar quando passar do limite).
+function manutPrefetchSelecao(){
+  if(!MANUT_SEL||!(navigator.canShare&&navigator.share))return;
+  const sel=MANUTENCOES.filter(m=>!m.concluido&&MANUT_SEL.has(m.id));
+  const total=sel.reduce((n,m)=>n+m.fotos.length,0);
+  sel.forEach(m=>(total<=MANUT_MAX_ARQUIVOS?m.fotos:m.fotos.slice(0,1)).forEach(p=>{manutArquivo(p).catch(()=>{});}));
+}
 
 async function abrirManutencao(){
   await carregarManutencoes();
-  MANUT_ABA="abertos";manutDescartarForm();
+  MANUT_ABA="abertos";MANUT_SEL=null;manutDescartarForm();
   if(MANUT_DISPONIVEL)await manutPrepararUrls();
   renderManutencaoModal();
   manutPrefetchArquivos();
 }
-function manutFechar(){manutDescartarForm();cMod();}
-function manutSetAba(a){MANUT_ABA=a;renderManutencaoModal();}
+function manutFechar(){
+  manutDescartarForm();MANUT_SEL=null;
+  if(MANUT_CONFIRMA){const r=MANUT_CONFIRMA;MANUT_CONFIRMA=null;r(false);}
+  cMod();
+}
+function manutSetAba(a){MANUT_ABA=a;MANUT_SEL=null;renderManutencaoModal();}
 // Abre o visualizador (lightbox) nas fotos do pedido, com navegação entre elas.
 function manutAbrirFotos(id,i){
   const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
@@ -5054,6 +5093,10 @@ function renderManutencaoModal(){
   const concluidos=MANUTENCOES.filter(m=>m.concluido).sort((a,b)=>(b.concluidoEm||"").localeCompare(a.concluidoEm||""));
   const lista=MANUT_ABA==="abertos"?abertos:concluidos;
   const editar=manutPodeEditar(),criar=manutPodeCriar();
+  if(MANUT_SEL){ // pedido concluído/excluído nesse meio tempo sai da seleção
+    for(const id of [...MANUT_SEL])if(!abertos.some(m=>m.id===id))MANUT_SEL.delete(id);
+  }
+  const selecionando=!!MANUT_SEL&&MANUT_ABA==="abertos";
   let itens="";
   if(!MANUT_DISPONIVEL){
     itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">Não foi possível carregar os pedidos de manutenção. Tente de novo mais tarde.</div>`;
@@ -5064,25 +5107,27 @@ function renderManutencaoModal(){
       const url=m.fotos.length?manutUrlCache(m.fotos[0]):null;
       const mais=m.fotos.length>1?`<span class="mt-mais" style="position:absolute;right:3px;bottom:3px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3">+${m.fotos.length-1}</span>`:"";
       const thumb=url
-        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" onclick="manutAbrirFotos('${m.id}',0)" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;cursor:pointer;border:1px solid var(--border)">${mais}</div>`
+        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" onclick="${selecionando?"event.stopPropagation();":""}manutAbrirFotos('${m.id}',0)" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;cursor:pointer;border:1px solid var(--border)">${mais}</div>`
         :`<div style="position:relative;width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotos.length?"📷":"🔧"}${mais}</div>`;
       const btn="";
-      itens+=`<div class="mt-item" data-id="${m.id}" style="background:var(--surface);border-radius:var(--r);border:1.5px solid var(--border);padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}">
+      const marcado=selecionando&&MANUT_SEL.has(m.id);
+      const caixa=selecionando?`<span class="mt-caixa${marcado?" on":""}" aria-hidden="true">${marcado?"✓":""}</span>`:"";
+      itens+=`<div class="mt-item${marcado?" mt-marcado":""}" data-id="${m.id}"${selecionando?` onclick="manutAlternarSel('${m.id}')" role="checkbox" aria-checked="${marcado}"`:""} style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${marcado?"var(--blue)":"var(--border)"};padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}${selecionando?";cursor:pointer":""}">
         <div style="display:flex;gap:12px;align-items:flex-start">
-          ${thumb}
+          ${caixa}${thumb}
           <div style="flex:1;min-width:0">
             <div class="mt-desc" style="font-size:14px;font-weight:600;color:var(--text);line-height:1.35;white-space:pre-wrap;word-break:break-word">${manutEsc(m.descricao)}</div>
             <div class="mt-meta" style="font-size:11px;color:var(--text3);margin-top:4px">${m.concluido?`Concluído em ${manutFmtData(m.concluidoEm||m.criadoEm)} · aberto em ${manutFmtData(m.criadoEm)}`:`${manutFmtData(m.criadoEm)} · ${manutQuando(m.criadoEm)}`}</div>
           </div>
         </div>
-        <div class="mt-acoes">
+        ${selecionando?"":`<div class="mt-acoes">
           ${editar?(m.concluido
             ?`<button class="mt-reabrir" onclick="manutAlternar('${m.id}',false)" style="${btn}">↩ Reabrir</button>`
             :`<button class="mt-concluir" onclick="manutAlternar('${m.id}',true)" style="${btn};border-color:var(--green-br);background:var(--green-bg);color:var(--green)">✓ Concluir</button>`):""}
           ${manutPodeEditarPedido(m)?`<button class="mt-editar" onclick="manutEditar('${m.id}')" style="${btn}">✏️ Editar</button>`:""}
           <button class="mt-whats" onclick="manutCompartilhar('${m.id}')" style="${btn}">📲 WhatsApp</button>
           ${editar?`<button class="mt-excluir" onclick="manutConfirmarExcluir('${m.id}')" style="${btn};color:var(--red)">🗑 Excluir</button>`:""}
-        </div>
+        </div>`}
       </div>`;
     });
   }
@@ -5095,9 +5140,15 @@ function renderManutencaoModal(){
       <div class="ag-filtros">
         <button class="ag-filtro mt-aba-abertos${MANUT_ABA==="abertos"?" ativo":""}" onclick="manutSetAba('abertos')">Abertos (${abertos.length})</button>
         <button class="ag-filtro mt-aba-concluidos${MANUT_ABA==="concluidos"?" ativo":""}" onclick="manutSetAba('concluidos')">Concluídos (${concluidos.length})</button>
+        ${MANUT_ABA==="abertos"&&MANUT_DISPONIVEL&&abertos.length?(selecionando
+          ?`<button class="ag-filtro mt-sel-btn mt-sair-sel on" onclick="manutSairSelecao()">Sair</button>`
+          :`<button class="ag-filtro mt-sel-btn mt-selecionar" onclick="manutSelecionar()">☑ Selecionar</button>`):""}
       </div>
+      ${selecionando?`<div class="mt-selbar"><button class="mt-todos" onclick="manutSelecionarTodos()"><span class="mt-caixa${abertos.every(m=>MANUT_SEL.has(m.id))?" on":""}" aria-hidden="true">${abertos.every(m=>MANUT_SEL.has(m.id))?"✓":""}</span>${abertos.every(m=>MANUT_SEL.has(m.id))?"Limpar seleção":"Selecionar todos"}</button><span class="mt-contagem">${MANUT_SEL.size} de ${abertos.length}</span></div>`:""}
       <div class="ag-lista">${itens}</div>
-      ${criar&&MANUT_DISPONIVEL?`<button class="ag-fab mt-novo" onclick="manutNovo()">+ Novo pedido</button>`:""}
+      ${selecionando
+        ?`<button class="ag-fab mt-enviar" onclick="manutEnviarSelecionados()"${MANUT_SEL.size?"":" disabled"}>📲 Enviar (${MANUT_SEL.size})</button>`
+        :(criar&&MANUT_DISPONIVEL?`<button class="ag-fab mt-novo" onclick="manutNovo()">+ Novo pedido</button>`:"")}
     </div></div>`;
 }
 
@@ -5239,7 +5290,7 @@ async function manutSalvar(){
     const removidas=original.fotos.filter(p=>!fotos.includes(p));
     await manutApagarArquivos(removidas);
     removidas.forEach(p=>delete MANUT_URLS[p]);
-    delete MANUT_ARQUIVOS[form.id];
+    removidas.forEach(p=>{delete MANUT_ARQUIVOS[p];});
   }else{
     const{error}=await supabaseClient.from("manutencoes").insert({restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,...campos});
     if(error){await falhar("Não foi possível salvar o pedido.");return;}
@@ -5282,42 +5333,186 @@ async function manutExcluir(id){
     await manutApagarArquivos(m.fotos);
     m.fotos.forEach(p=>delete MANUT_URLS[p]);
   }
-  delete MANUT_ARQUIVOS[id];
+  if(m)m.fotos.forEach(p=>{delete MANUT_ARQUIVOS[p];});
   await carregarManutencoes();
   renderManutencaoModal();
   showToast("🗑️ Pedido excluído");
 }
 
 // --- WhatsApp ---
-function manutTextoWhatsapp(m){
+const manutFmtDataCurta=iso=>manutFmtData(iso).slice(0,5);
+// Texto da mensagem. 1 pedido: o formato de sempre (idêntico ao envio individual).
+// 2 ou mais: uma mensagem só, numerada. linksPorPedido (opcional, só no fallback
+// wa.me): [[url,...],...] na mesma ordem de lista; links ausentes (null) são pulados.
+function manutTextoWhatsapp(lista,linksPorPedido){
   const rest=RESTAURANTE_NOME?` — ${RESTAURANTE_NOME}`:"";
-  return `🔧 Pedido de manutenção${rest}\n\n${m.descricao}\n\nAberto em ${manutFmtData(m.criadoEm)}`;
+  const rotulo=(m,k)=>m.fotos.length>1?`Foto ${k+1}`:"Foto";
+  if(lista.length===1){
+    const m=lista[0];
+    let t=`🔧 Pedido de manutenção${rest}\n\n${m.descricao}\n\nAberto em ${manutFmtData(m.criadoEm)}`;
+    ((linksPorPedido&&linksPorPedido[0])||[]).forEach((u,k)=>{if(u)t+=`\n\n📷 ${rotulo(m,k)}: ${u}`;});
+    return t;
+  }
+  const itens=lista.map((m,i)=>{
+    let s=`${i+1}) ${m.descricao} (aberto em ${manutFmtDataCurta(m.criadoEm)})`;
+    ((linksPorPedido&&linksPorPedido[i])||[]).forEach((u,k)=>{if(u)s+=`\n📷 ${rotulo(m,k)}: ${u}`;});
+    return s;
+  });
+  return `🔧 Pedidos de manutenção${rest}\n\n${itens.join("\n\n")}`;
 }
-// Caminho principal: Web Share API com TODAS as fotos como arquivos (foto + texto
-// juntos no menu de compartilhar do celular, onde a pessoa escolhe o WhatsApp e o
-// contato). Só compartilha como arquivo se todas as fotos foram baixadas e o
-// navegador aceitar (canShare). Fallback: wa.me com o texto e, se houver fotos, os
-// links assinados de 7 dias de TODAS (o de 1h da tela expiraria cedo demais).
+const manutUrlWhatsapp=texto=>"https://wa.me/?text="+encodeURIComponent(texto);
+function manutAbrirWhatsapp(texto){window.open(manutUrlWhatsapp(texto),"_blank");}
+
+// Web Share API com as fotos como arquivos (foto + texto juntos no menu de
+// compartilhar do celular, onde a pessoa escolhe o WhatsApp e o contato). Usada pelo
+// envio individual e pelo em lote. Devolve "ok", "cancelado" (fechou o menu),
+// "recusado" (o navegador não aceita esses arquivos: canShare falso) ou "erro"
+// (foto não baixou, ou outro erro do share). pre: Promise dos arquivos, se já iniciada.
+async function manutTentarShare(lista,fotosPorPedido,texto,pre){
+  let arquivos;
+  try{arquivos=await(pre||Promise.all(fotosPorPedido.flat().map(manutArquivo)));}
+  catch(e){return "erro";}
+  arquivos=arquivos.map((f,i)=>new File([f],`manutencao-${i+1}.jpg`,{type:f.type}));
+  const dados={files:arquivos,text:texto,title:lista.length===1?"Pedido de manutenção":"Pedidos de manutenção"};
+  if(!navigator.canShare(dados))return "recusado";
+  try{await navigator.share(dados);return "ok";}
+  catch(e){return e&&e.name==="AbortError"?"cancelado":"erro";} // cancelou: não abre mais nada; outro erro cai no fallback
+}
+
+// Caixa de confirmação (avisos ANTES de abrir o compartilhamento). Resolve true em
+// "Continuar", false em "Cancelar". O clique em Continuar é o toque novo que o
+// navegador exige pro share/janela.
+function manutConfirmar(titulo,msg){
+  return new Promise(res=>{
+    MANUT_CONFIRMA=res;
+    document.getElementById("modal").innerHTML=`<div class="mov"><div class="mbox">
+      <h3>${manutEsc(titulo)}</h3>
+      <p class="msub mt-conf-msg">${manutEsc(msg)}</p>
+      <div class="macts"><button class="mt-conf-cancelar" onclick="manutConfirmaResp(false)">Cancelar</button><button class="bok mt-conf-continuar" onclick="manutConfirmaResp(true)">Continuar</button></div>
+    </div></div>`;
+  });
+}
+function manutConfirmaResp(ok){
+  const r=MANUT_CONFIRMA;MANUT_CONFIRMA=null;
+  renderManutencaoModal(); // o menu de compartilhar abre por cima da lista
+  if(r)r(ok);
+}
+
+// Envio de 1 pedido: foto(s) por Web Share; sem isso, wa.me com o texto e os links
+// assinados de 7 dias de TODAS as fotos (o de 1h da tela expiraria cedo demais).
+async function manutEnviarUm(m){
+  const texto=manutTextoWhatsapp([m]);
+  if(m.fotos.length&&navigator.canShare&&navigator.share){
+    const r=await manutTentarShare([m],[m.fotos],texto);
+    if(r==="ok"||r==="cancelado")return r;
+  }
+  let urls=[];
+  if(m.fotos.length)urls=await Promise.all(m.fotos.map(p=>manutUrlAssinada(p,7*24*3600)));
+  manutAbrirWhatsapp(manutTextoWhatsapp([m],[urls]));
+  return "ok";
+}
+// Envio de vários pedidos numa mensagem só. Fotos: todas por Web Share se couberem
+// no limite de arquivos e o navegador aceitar; senão a 1ª de cada pedido, com aviso.
+async function manutEnviarVarios(lista){
+  const texto=manutTextoWhatsapp(lista);
+  const total=lista.reduce((n,m)=>n+m.fotos.length,0);
+  if(total&&navigator.canShare&&navigator.share){
+    let r=null;
+    if(total<=MANUT_MAX_ARQUIVOS){
+      r=await manutTentarShare(lista,lista.map(m=>m.fotos),texto);
+      if(r==="ok"||r==="cancelado")return r;
+    }
+    const primeiras=lista.map(m=>m.fotos.slice(0,1));
+    const n=primeiras.reduce((s,f)=>s+f.length,0);
+    if((total>MANUT_MAX_ARQUIVOS||r==="recusado")&&n<total&&n<=MANUT_MAX_ARQUIVOS){
+      const pre=Promise.all(primeiras.flat().map(manutArquivo));
+      pre.catch(()=>{}); // baixa enquanto a pessoa lê o aviso
+      const motivo=total>MANUT_MAX_ARQUIVOS
+        ?`Os ${lista.length} pedidos têm ${total} fotos, e cada envio aceita até ${MANUT_MAX_ARQUIVOS}.`
+        :"Seu aparelho não aceita enviar todas as fotos de uma vez.";
+      if(!await manutConfirmar("Muitas fotos para enviar",`${motivo} Vai a primeira foto de cada pedido (${n}).`))return "cancelado";
+      r=await manutTentarShare(lista,primeiras,texto,pre);
+      if(r==="ok"||r==="cancelado")return r;
+    }
+  }
+  return manutFallbackVarios(lista,texto,total);
+}
+// Sem Web Share de arquivos: wa.me com a lista numerada. Links de foto só se a URL
+// final continuar dentro do limite seguro; senão só o texto, avisando.
+async function manutFallbackVarios(lista,texto,total){
+  if(total){
+    const links={};
+    const assinar=async paths=>{
+      const falta=paths.filter(p=>!(p in links));
+      if(!falta.length)return;
+      const{data}=await supabaseClient.storage.from("manutencoes").createSignedUrls(falta,7*24*3600);
+      falta.forEach(p=>{links[p]=null;});
+      (data||[]).forEach(x=>{if(x&&x.signedUrl&&x.path)links[x.path]=x.signedUrl;});
+    };
+    const base=manutUrlWhatsapp(texto).length;
+    const planos=[["todas",lista.map(m=>m.fotos)],["primeiras",lista.map(m=>m.fotos.slice(0,1))]];
+    for(const[nome,fotos]of planos){
+      const n=fotos.reduce((s,f)=>s+f.length,0);
+      if(nome==="primeiras"&&n===total)continue; // seria igual ao plano anterior
+      if(base+n*MANUT_LINK_MIN>MANUT_MAX_URL_WHATSAPP)continue; // nem assinando cabe
+      await assinar(fotos.flat());
+      const t=manutTextoWhatsapp(lista,fotos.map(f=>f.map(p=>links[p])));
+      if(manutUrlWhatsapp(t).length>MANUT_MAX_URL_WHATSAPP)continue;
+      if(nome==="primeiras"&&!await manutConfirmar("Mensagem grande demais",`Com todos os links de foto a mensagem ficaria grande demais para o WhatsApp. Vai o link da primeira foto de cada pedido (${n}).`))return "cancelado";
+      manutAbrirWhatsapp(t);
+      return "ok";
+    }
+    if(!await manutConfirmar("As fotos não vão junto","Com os links de foto a mensagem ficaria grande demais para o WhatsApp. Vai só o texto dos pedidos."))return "cancelado";
+  }
+  manutAbrirWhatsapp(texto);
+  return "ok";
+}
+// Ponto de entrada único: 1 pedido = envio individual de sempre.
+function manutEnviar(lista){return lista.length===1?manutEnviarUm(lista[0]):manutEnviarVarios(lista);}
 async function manutCompartilhar(id){
   const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
-  const texto=manutTextoWhatsapp(m);
-  let arquivos=null;
-  if(m.fotos.length&&navigator.canShare&&navigator.share){
-    const c=MANUT_ARQUIVOS[id];
-    if(c&&c.chave===m.fotos.join("|"))arquivos=c.files;
-    else{try{arquivos=await manutBaixarArquivos(m);}catch(e){arquivos=null;}}
-  }
-  const dados=arquivos&&arquivos.length===m.fotos.length?{files:arquivos,text:texto,title:"Pedido de manutenção"}:null;
-  if(dados&&navigator.canShare(dados)){
-    try{await navigator.share(dados);return;}
-    catch(e){if(e&&e.name==="AbortError")return;} // cancelou: não abre mais nada; outro erro cai no fallback
-  }
-  let links="";
-  if(m.fotos.length){
-    const urls=await Promise.all(m.fotos.map(p=>manutUrlAssinada(p,7*24*3600)));
-    urls.forEach((u,i)=>{if(u)links+=`\n\n📷 ${m.fotos.length>1?`Foto ${i+1}`:"Foto"}: ${u}`;});
-  }
-  window.open("https://wa.me/?text="+encodeURIComponent(texto+links),"_blank");
+  await manutEnviar([m]);
+}
+
+// --- Seleção de vários pedidos (aba Abertos) ---
+function manutSelecionar(){
+  if(MANUT_ABA!=="abertos"||!MANUT_DISPONIVEL||MANUT_FORM)return;
+  MANUT_SEL=new Set();manutRenderMantendoRolagem();
+}
+function manutSairSelecao(){MANUT_SEL=null;manutRenderMantendoRolagem();}
+function manutAlternarSel(id){
+  if(!MANUT_SEL)return;
+  const m=MANUTENCOES.find(x=>x.id===id);if(!m||m.concluido)return; // concluído não entra
+  if(MANUT_SEL.has(id))MANUT_SEL.delete(id);else MANUT_SEL.add(id);
+  manutRenderMantendoRolagem();manutPrefetchSelecao();
+}
+function manutSelecionarTodos(){
+  if(!MANUT_SEL)return;
+  const abertos=MANUTENCOES.filter(m=>!m.concluido);
+  if(abertos.every(m=>MANUT_SEL.has(m.id)))MANUT_SEL.clear();
+  else abertos.forEach(m=>MANUT_SEL.add(m.id));
+  manutRenderMantendoRolagem();manutPrefetchSelecao();
+}
+// Re-renderiza sem perder a posição da rolagem (a lista e o modal rolam).
+function manutRenderMantendoRolagem(){
+  const q=s=>document.querySelector(s);
+  const a=q(".mbox"),b=q(".ag-lista");
+  const ya=a?a.scrollTop:0,yb=b?b.scrollTop:0;
+  renderManutencaoModal();
+  const a2=q(".mbox"),b2=q(".ag-lista");
+  if(a2)a2.scrollTop=ya;if(b2)b2.scrollTop=yb;
+}
+// Envia os pedidos marcados (na ordem em que aparecem na lista). Concluído o envio,
+// a seleção é limpa e o modo termina; se a pessoa cancelar, a seleção continua.
+async function manutEnviarSelecionados(){
+  if(!MANUT_SEL||MANUT_SEL.size===0||MANUT_ENVIANDO)return;
+  const lista=MANUTENCOES.filter(m=>!m.concluido&&MANUT_SEL.has(m.id));
+  if(!lista.length)return;
+  MANUT_ENVIANDO=true;
+  try{
+    const r=await manutEnviar(lista);
+    if(r==="ok"){MANUT_SEL=null;manutRenderMantendoRolagem();}
+  }finally{MANUT_ENVIANDO=false;}
 }
 
 async function carregarEquipeEPracas(){
