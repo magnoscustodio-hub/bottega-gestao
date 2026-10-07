@@ -86,6 +86,18 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1100;align-items:center;justify-content:center;overflow:auto}
 .lightbox.aberto{display:flex}
 .lightbox img{max-width:100%;max-height:100%;object-fit:contain}
+/* MANUTENÇÃO: linha de ações do pedido (Concluir/Reabrir, Editar, WhatsApp, Excluir).
+   Grade de 2 colunas: 4 botões viram 2x2 (não cabem em uma linha em 360px); um botão
+   sobrando fica sozinho ocupando a largura toda. */
+.mt-acoes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.mt-acoes button:last-child:nth-child(odd){grid-column:1/-1}
+.mt-acoes button{padding:8px 6px;border-radius:20px;border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap}
+/* Lightbox com várias fotos (Manutenção): setas, contador. */
+.lightbox-nav{position:fixed;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,.18);color:white;font-size:24px;cursor:pointer;z-index:1101;display:none;align-items:center;justify-content:center}
+.lightbox-nav.prev{left:10px}.lightbox-nav.next{right:10px}
+.lightbox.galeria .lightbox-nav{display:flex}
+.lightbox-count{position:fixed;top:24px;left:50%;transform:translateX(-50%);color:white;font-size:14px;font-weight:700;z-index:1101;display:none;background:rgba(0,0,0,.4);padding:2px 12px;border-radius:12px}
+.lightbox.galeria .lightbox-count{display:block}
 .lightbox-close{position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:white;font-size:20px;cursor:pointer;z-index:1101;display:flex;align-items:center;justify-content:center}
 
 /* Nível de acesso "consulta": esconde os pontos de edição mais óbvios.
@@ -509,6 +521,9 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
   </div>
   <div id="lightbox" class="lightbox" onclick="if(event.target===this)fecharLightbox()">
     <button class="lightbox-close" onclick="fecharLightbox()">✕</button>
+    <span id="lightbox-count" class="lightbox-count"></span>
+    <button class="lightbox-nav prev" onclick="lbNavegar(-1)" aria-label="Foto anterior">‹</button>
+    <button class="lightbox-nav next" onclick="lbNavegar(1)" aria-label="Próxima foto">›</button>
     <img id="lightbox-img" src="">
   </div>
 </div>
@@ -4753,16 +4768,46 @@ async function agConfCancelarEvento(id,todos){
 }
 
 // --- Lightbox (visualizador em tela cheia da imagem do menu, com pinch-zoom nativo) ---
-function abrirLightbox(url){
-  document.getElementById("lightbox-img").src=url;
-  document.getElementById("lightbox").classList.add("aberto");
+let LB_FOTOS=[],LB_I=0;
+function lbPintar(){
+  document.getElementById('lightbox-img').src=LB_FOTOS[LB_I];
+  const c=document.getElementById('lightbox-count');if(c)c.textContent=(LB_I+1)+'/'+LB_FOTOS.length;
+  document.getElementById('lightbox').classList.toggle('galeria',LB_FOTOS.length>1);
+}
+function lbAbrir(urls,i){
+  LB_FOTOS=urls;LB_I=Math.min(Math.max(i||0,0),urls.length-1);
+  lbPintar();
+  document.getElementById('lightbox').classList.add('aberto');
   const vp=document.querySelector('meta[name="viewport"]');
-  if(vp){window._viewportOriginal=vp.getAttribute("content");vp.setAttribute("content","width=device-width, initial-scale=1.0");}
+  if(vp&&!window._viewportOriginal){window._viewportOriginal=vp.getAttribute('content');vp.setAttribute('content','width=device-width, initial-scale=1.0');}
+}
+// Uma foto só (imagem do cardápio do Evento): comportamento de sempre, sem setas.
+function abrirLightbox(url){lbAbrir([url],0);}
+// Várias fotos (pedido de Manutenção): setas, contador, teclado e deslize.
+function abrirLightboxGaleria(urls,i){lbAbrir(urls,i);}
+function lbNavegar(d){
+  if(LB_FOTOS.length<2)return;
+  LB_I=(LB_I+d+LB_FOTOS.length)%LB_FOTOS.length;lbPintar();
 }
 function fecharLightbox(){
-  document.getElementById("lightbox").classList.remove("aberto");
+  document.getElementById('lightbox').classList.remove('aberto');
   const vp=document.querySelector('meta[name="viewport"]');
-  if(vp&&window._viewportOriginal)vp.setAttribute("content",window._viewportOriginal);
+  if(vp&&window._viewportOriginal){vp.setAttribute('content',window._viewportOriginal);window._viewportOriginal=null;}
+}
+if(typeof document.addEventListener==='function'){
+  document.addEventListener('keydown',e=>{
+    const lb=document.getElementById('lightbox');if(!lb||!lb.classList.contains('aberto'))return;
+    if(e.key==='ArrowLeft')lbNavegar(-1);else if(e.key==='ArrowRight')lbNavegar(1);else if(e.key==='Escape')fecharLightbox();
+  });
+  let _sx=null;
+  const lbEl=document.getElementById('lightbox');
+  if(lbEl&&lbEl.addEventListener){
+    lbEl.addEventListener('touchstart',e=>{_sx=(e.touches.length===1&&!(window.visualViewport&&window.visualViewport.scale>1.05))?e.touches[0].clientX:null;},{passive:true});
+    lbEl.addEventListener('touchend',e=>{
+      if(_sx==null)return;const dx=e.changedTouches[0].clientX-_sx;_sx=null;
+      if(Math.abs(dx)>50)lbNavegar(dx<0?1:-1);
+    },{passive:true});
+  }
 }
 
 // --- Modal de detalhes do Evento (aberto a partir do widget Agenda na Home) ---
@@ -4893,25 +4938,33 @@ async function removerMenuEvento(id){
   abrirModalEvento(id);
 }
 
-// ===== MANUTENÇÃO: pedidos (foto opcional + descrição), Abertos/Concluídos =====
-// Tabela manutencoes + bucket privado "manutencoes" (supabase/manutencoes.sql).
-// master/gerencial criam/concluem/excluem; consulta só vê e compartilha.
+// ===== MANUTENÇÃO: pedidos (fotos opcionais + descrição), Abertos/Concluídos =====
+// Tabela manutencoes + bucket privado "manutencoes" (supabase/manutencoes*.sql).
+// Até 5 fotos por pedido (fotos_paths; foto_path guarda a primeira, pra aba antiga
+// e pra poder voltar atrás). master/gerencial criam, editam, concluem e excluem;
+// consulta cria, edita SÓ os próprios pedidos e compartilha -- não conclui nem exclui.
 let MANUTENCOES=[];
 let MANUT_ABA="abertos";
 let MANUT_DISPONIVEL=true;   // false se a consulta à tabela falhou (ex: SQL ainda não rodado)
-let MANUT_FORM=null;         // {descricao,foto(Blob),previewUrl,processando,salvando} enquanto o formulário está aberto
+let MANUT_FORM=null;         // formulário aberto: {id|null,descricao,existentes[paths],novas[{blob,previewUrl}],processando(n),salvando}
 const MANUT_URLS={};         // path -> {url,ate} (URL assinada de 1h, em cache)
-const MANUT_ARQUIVOS={};     // id -> File (foto já baixada, pra o share sair na hora do toque)
-const MANUT_FOTO_MAX=1600,MANUT_FOTO_QUALIDADE=0.8;
+const MANUT_ARQUIVOS={};     // id -> {chave,files[File]} (fotos já baixadas, pra o share sair na hora do toque)
+const MANUT_FOTOS_MAX=5;
+const MANUT_FOTO_MAX=2000,MANUT_FOTO_QUALIDADE=0.8;
 
-// Criar pedido (com foto): os três níveis. Concluir/reabrir/excluir: só master e
-// gerencial. Lista branca nos dois (nível desconhecido não ganha permissão nenhuma),
-// espelhando as policies de RLS de supabase/manutencoes*.sql.
+// Criar: os três níveis. Concluir/reabrir/excluir: só master e gerencial. Lista
+// branca nos dois (nível desconhecido não ganha nada), espelhando as policies de
+// RLS. Editar: master/gerencial qualquer pedido; consulta só os que ela criou.
 const manutPodeCriar=()=>["master","gerencial","consulta"].includes(NIVEL_ACESSO);
 const manutPodeEditar=()=>["master","gerencial"].includes(NIVEL_ACESSO);
+const manutPodeEditarPedido=m=>manutPodeEditar()||(NIVEL_ACESSO==="consulta"&&!!USER_ID&&!!m&&m.criadoPor===USER_ID);
 const manutEsc=s=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+// Fotos do pedido: fotos_paths; pedidos antigos (só foto_path) continuam aparecendo.
+function manutFotosDe(r){
+  return Array.isArray(r.fotos_paths)&&r.fotos_paths.length?r.fotos_paths:(r.foto_path?[r.foto_path]:[]);
+}
 function manutMapeia(r){
-  return{id:r.id,descricao:r.descricao,fotoPath:r.foto_path||null,concluido:!!r.concluido,concluidoEm:r.concluido_em||null,criadoEm:r.created_at};
+  return{id:r.id,descricao:r.descricao,fotos:manutFotosDe(r),concluido:!!r.concluido,concluidoEm:r.concluido_em||null,criadoEm:r.created_at,criadoPor:r.criado_por||null};
 }
 async function carregarManutencoes(){
   const{data,error}=await supabaseClient.from("manutencoes").select("*").eq("restaurante_id",RESTAURANTE_ID).order("created_at",{ascending:false});
@@ -4943,35 +4996,57 @@ async function manutUrlAssinada(path,segundos){
   if(segundos===3600)MANUT_URLS[path]={url:data.signedUrl,ate:Date.now()+55*60*1000};
   return data.signedUrl;
 }
-// Uma chamada só pra todas as miniaturas da lista.
+const manutUrlCache=p=>(MANUT_URLS[p]&&MANUT_URLS[p].ate>Date.now())?MANUT_URLS[p].url:null;
+// Uma chamada só pra todas as miniaturas da lista (todas as fotos de todos os pedidos).
 async function manutPrepararUrls(){
-  const paths=MANUTENCOES.filter(m=>m.fotoPath&&!(MANUT_URLS[m.fotoPath]&&MANUT_URLS[m.fotoPath].ate>Date.now())).map(m=>m.fotoPath);
+  const paths=[...new Set(MANUTENCOES.flatMap(m=>m.fotos))].filter(p=>!manutUrlCache(p));
   if(!paths.length)return;
   const{data}=await supabaseClient.storage.from("manutencoes").createSignedUrls(paths,3600);
   (data||[]).forEach(x=>{if(x&&x.signedUrl&&x.path)MANUT_URLS[x.path]={url:x.signedUrl,ate:Date.now()+55*60*1000};});
 }
-// Baixa a foto em segundo plano pra navigator.share({files}) poder rodar logo
-// no toque (alguns navegadores só aceitam o share colado ao gesto do usuário).
+// Baixa as fotos do pedido como File (pra navigator.share). Devolve todas ou lança.
+async function manutBaixarArquivos(m){
+  const files=[];
+  for(let i=0;i<m.fotos.length;i++){
+    const url=manutUrlCache(m.fotos[i])||await manutUrlAssinada(m.fotos[i],3600);
+    if(!url)throw new Error("url");
+    const blob=await(await fetch(url)).blob();
+    files.push(new File([blob],`manutencao-${i+1}.jpg`,{type:blob.type||"image/jpeg"}));
+  }
+  MANUT_ARQUIVOS[m.id]={chave:m.fotos.join("|"),files};
+  return files;
+}
+// Pré-baixa em segundo plano pra o share sair no toque (alguns navegadores só
+// aceitam o share colado ao gesto do usuário). Com várias fotos por pedido o
+// orçamento é limitado: só os pedidos abertos mais recentes, no máximo 15 fotos.
 function manutPrefetchArquivos(){
   if(!(navigator.canShare&&navigator.share))return;
-  MANUTENCOES.filter(m=>m.fotoPath&&!MANUT_ARQUIVOS[m.id]).slice(0,20).forEach(async m=>{
-    try{
-      const url=MANUT_URLS[m.fotoPath]&&MANUT_URLS[m.fotoPath].url;if(!url)return;
-      const blob=await(await fetch(url)).blob();
-      MANUT_ARQUIVOS[m.id]=new File([blob],"manutencao.jpg",{type:blob.type||"image/jpeg"});
-    }catch(e){}
-  });
+  let orcamento=15;
+  for(const m of MANUTENCOES.filter(x=>!x.concluido)){
+    if(orcamento<=0)break;
+    if(!m.fotos.length||m.fotos.length>orcamento)continue;
+    const c=MANUT_ARQUIVOS[m.id];
+    if(c&&c.chave===m.fotos.join("|"))continue;
+    orcamento-=m.fotos.length;
+    manutBaixarArquivos(m).catch(()=>{});
+  }
 }
 
 async function abrirManutencao(){
   await carregarManutencoes();
-  MANUT_ABA="abertos";MANUT_FORM=null;
+  MANUT_ABA="abertos";manutDescartarForm();
   if(MANUT_DISPONIVEL)await manutPrepararUrls();
   renderManutencaoModal();
   manutPrefetchArquivos();
 }
 function manutFechar(){manutDescartarForm();cMod();}
 function manutSetAba(a){MANUT_ABA=a;renderManutencaoModal();}
+// Abre o visualizador (lightbox) nas fotos do pedido, com navegação entre elas.
+function manutAbrirFotos(id,i){
+  const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
+  const urls=m.fotos.map(manutUrlCache).filter(Boolean);
+  if(urls.length)abrirLightboxGaleria(urls,i||0);
+}
 
 function renderManutencaoModal(){
   if(MANUT_FORM){renderManutencaoForm();return;}
@@ -4986,11 +5061,12 @@ function renderManutencaoModal(){
     itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">${MANUT_ABA==="abertos"?"Nenhum pedido em aberto.":"Nenhum pedido concluído."}</div>`;
   }else{
     lista.forEach(m=>{
-      const url=m.fotoPath&&MANUT_URLS[m.fotoPath]?MANUT_URLS[m.fotoPath].url:null;
+      const url=m.fotos.length?manutUrlCache(m.fotos[0]):null;
+      const mais=m.fotos.length>1?`<span class="mt-mais" style="position:absolute;right:3px;bottom:3px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3">+${m.fotos.length-1}</span>`:"";
       const thumb=url
-        ?`<img src="${url}" alt="Foto do pedido" loading="lazy" onclick="abrirLightbox('${url}')" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;flex-shrink:0;cursor:pointer;border:1px solid var(--border)">`
-        :`<div style="width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotoPath?"📷":"🔧"}</div>`;
-      const btn="padding:6px 9px;border-radius:20px;border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text2);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit";
+        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" onclick="manutAbrirFotos('${m.id}',0)" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;cursor:pointer;border:1px solid var(--border)">${mais}</div>`
+        :`<div style="position:relative;width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotos.length?"📷":"🔧"}${mais}</div>`;
+      const btn="";
       itens+=`<div class="mt-item" data-id="${m.id}" style="background:var(--surface);border-radius:var(--r);border:1.5px solid var(--border);padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}">
         <div style="display:flex;gap:12px;align-items:flex-start">
           ${thumb}
@@ -4999,10 +5075,11 @@ function renderManutencaoModal(){
             <div class="mt-meta" style="font-size:11px;color:var(--text3);margin-top:4px">${m.concluido?`Concluído em ${manutFmtData(m.concluidoEm||m.criadoEm)} · aberto em ${manutFmtData(m.criadoEm)}`:`${manutFmtData(m.criadoEm)} · ${manutQuando(m.criadoEm)}`}</div>
           </div>
         </div>
-        <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <div class="mt-acoes">
           ${editar?(m.concluido
             ?`<button class="mt-reabrir" onclick="manutAlternar('${m.id}',false)" style="${btn}">↩ Reabrir</button>`
             :`<button class="mt-concluir" onclick="manutAlternar('${m.id}',true)" style="${btn};border-color:var(--green-br);background:var(--green-bg);color:var(--green)">✓ Concluir</button>`):""}
+          ${manutPodeEditarPedido(m)?`<button class="mt-editar" onclick="manutEditar('${m.id}')" style="${btn}">✏️ Editar</button>`:""}
           <button class="mt-whats" onclick="manutCompartilhar('${m.id}')" style="${btn}">📲 WhatsApp</button>
           ${editar?`<button class="mt-excluir" onclick="manutConfirmarExcluir('${m.id}')" style="${btn};color:var(--red)">🗑 Excluir</button>`:""}
         </div>
@@ -5024,40 +5101,54 @@ function renderManutencaoModal(){
     </div></div>`;
 }
 
-// --- Formulário de novo pedido ---
+// --- Formulário (novo pedido e edição: o mesmo) ---
 function manutNovo(){
   if(!manutPodeCriar())return;
-  MANUT_FORM={descricao:"",foto:null,previewUrl:null,processando:false,salvando:false};
+  manutDescartarForm();
+  MANUT_FORM={id:null,descricao:"",existentes:[],novas:[],processando:0,salvando:false};
+  renderManutencaoForm();
+}
+function manutEditar(id){
+  const m=MANUTENCOES.find(x=>x.id===id);
+  if(!m||!manutPodeEditarPedido(m))return;
+  manutDescartarForm();
+  MANUT_FORM={id,descricao:m.descricao,existentes:[...m.fotos],novas:[],processando:0,salvando:false};
   renderManutencaoForm();
 }
 function manutDescartarForm(){
-  if(MANUT_FORM&&MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
+  if(MANUT_FORM)MANUT_FORM.novas.forEach(n=>{if(n.previewUrl)URL.revokeObjectURL(n.previewUrl);});
   MANUT_FORM=null;
 }
 function manutCancelarForm(){manutDescartarForm();renderManutencaoModal();}
 function renderManutencaoForm(){
-  const f=MANUT_FORM;
-  const btnFoto="flex:1;padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit";
+  const f=MANUT_FORM,editando=!!f.id;
+  const total=f.existentes.length+f.novas.length,cheio=total+f.processando>=MANUT_FOTOS_MAX;
+  const btnFoto=`flex:1;padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit${cheio?";opacity:.45;cursor:not-allowed":""}`;
+  const tile=(src,onclick,cls)=>`<div class="mt-foto-tile ${cls}" style="position:relative;aspect-ratio:1/1;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface2)">${src?`<img src="${src}" alt="Foto" style="width:100%;height:100%;object-fit:cover;display:block">`:`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>`}<button class="mt-remover-foto" onclick="${onclick}" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:13px;cursor:pointer">✕</button></div>`;
+  const tiles=f.existentes.map((p,i)=>tile(manutUrlCache(p),`manutRemoverFoto('e',${i})`,"mt-tile-existente")).join("")
+    +f.novas.map((n,i)=>tile(n.previewUrl,`manutRemoverFoto('n',${i})`,"mt-tile-nova")).join("")
+    +Array.from({length:f.processando},()=>`<div class="mt-foto-tile mt-tile-processando" style="aspect-ratio:1/1;border-radius:var(--rs);border:1px dashed var(--border-s);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3)">...</div>`).join("");
   document.getElementById("modal").innerHTML=`
     <div class="mov" onclick="if(event.target===this)manutFechar()"><div class="mbox">
-      <h3>🔧 Novo pedido de manutenção</h3>
-      <p class="msub">Uma foto ajuda quem vai consertar (opcional).</p>
+      <h3>${editando?"✏️ Editar pedido de manutenção":"🔧 Novo pedido de manutenção"}</h3>
+      <p class="msub">Fotos ajudam quem vai consertar (opcional, até ${MANUT_FOTOS_MAX}).</p>
       <input type="file" id="mt-foto-cam" accept="image/*" capture="environment" style="display:none" onchange="manutFotoEscolhida(this)">
-      <input type="file" id="mt-foto-gal" accept="image/*" style="display:none" onchange="manutFotoEscolhida(this)">
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="mt-tirar" onclick="document.getElementById('mt-foto-cam').click()" style="${btnFoto}">📷 Tirar foto</button>
-        <button class="mt-galeria" onclick="document.getElementById('mt-foto-gal').click()" style="${btnFoto}">🖼️ Galeria</button>
+      <input type="file" id="mt-foto-gal" accept="image/*" multiple style="display:none" onchange="manutFotoEscolhida(this)">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button class="mt-tirar" onclick="document.getElementById('mt-foto-cam').click()"${cheio?" disabled":""} style="${btnFoto}">📷 Tirar foto</button>
+        <button class="mt-galeria" onclick="document.getElementById('mt-foto-gal').click()"${cheio?" disabled":""} style="${btnFoto}">🖼️ Galeria</button>
       </div>
-      ${f.processando?`<div class="mt-processando" style="font-size:12px;color:var(--text3);margin-bottom:10px">Processando a foto...</div>`:""}
-      ${f.previewUrl?`<div style="position:relative;margin-bottom:10px"><img class="mt-previa" src="${f.previewUrl}" alt="Prévia da foto" style="width:100%;max-height:220px;object-fit:cover;border-radius:var(--rs);border:1px solid var(--border)"><button class="mt-remover-foto" onclick="manutRemoverFoto()" style="position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:14px;cursor:pointer">✕</button></div>`:""}
+      <div class="mt-contador" style="font-size:11px;color:var(--text3);margin-bottom:8px">${total} de ${MANUT_FOTOS_MAX} fotos${cheio?" · limite atingido":""}${f.processando?` · processando ${f.processando}...`:""}</div>
+      ${tiles?`<div class="mt-grade" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">${tiles}</div>`:""}
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Descrição</label>
       <textarea id="mt-desc" class="minp" rows="4" placeholder="Ex: Freezer da cozinha não está gelando" oninput="MANUT_FORM.descricao=this.value" style="resize:vertical">${manutEsc(f.descricao)}</textarea>
       <div class="macts"><button onclick="manutCancelarForm()">Cancelar</button><button class="bok mt-salvar" id="mt-salvar" onclick="manutSalvar()"${f.salvando||f.processando?" disabled":""}>${f.salvando?"Salvando...":"Salvar"}</button></div>
     </div></div>`;
 }
-function manutRemoverFoto(){
-  if(MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
-  MANUT_FORM.foto=null;MANUT_FORM.previewUrl=null;
+function manutRemoverFoto(tipo,i){
+  const f=MANUT_FORM;if(!f)return;
+  if(tipo==="e")f.existentes.splice(i,1);
+  else{const n=f.novas.splice(i,1)[0];if(n&&n.previewUrl)URL.revokeObjectURL(n.previewUrl);}
   renderManutencaoForm();
 }
 // Foto de celular é grande: reduz pra no máximo MANUT_FOTO_MAX no lado maior e
@@ -5086,47 +5177,80 @@ async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO
   if(!blob)throw new Error("canvas");
   return blob;
 }
+// Aceita 1 foto (câmera) ou várias de uma vez (galeria). Respeita o limite total
+// (existentes + novas + as que ainda estão sendo processadas) e comprime uma de cada vez.
 async function manutFotoEscolhida(input){
-  const arquivo=input.files&&input.files[0];
+  const form=MANUT_FORM;
+  let arquivos=Array.from(input.files||[]);
   input.value="";
-  if(!arquivo||!MANUT_FORM)return;
-  if(!arquivo.type.startsWith("image/")){avisoErro("Escolha uma imagem.");return;}
-  MANUT_FORM.processando=true;renderManutencaoForm();
-  try{
-    const blob=await manutComprimirImagem(arquivo);
-    if(!MANUT_FORM)return; // fechou o formulário no meio
-    if(MANUT_FORM.previewUrl)URL.revokeObjectURL(MANUT_FORM.previewUrl);
-    MANUT_FORM.foto=blob;MANUT_FORM.previewUrl=URL.createObjectURL(blob);
-  }catch(e){
-    avisoErro("Não foi possível ler esta imagem. Tente outra foto.");
+  if(!arquivos.length||!form)return;
+  const imagens=arquivos.filter(a=>a.type.startsWith("image/"));
+  if(imagens.length<arquivos.length)avisoErro("Só imagens são aceitas; os outros arquivos foram ignorados.");
+  const vagas=MANUT_FOTOS_MAX-form.existentes.length-form.novas.length-form.processando;
+  if(vagas<=0){avisoErro(`Limite de ${MANUT_FOTOS_MAX} fotos por pedido.`);return;}
+  if(imagens.length>vagas)avisoErro(`Só cabem mais ${vagas} foto${vagas>1?"s":""} (limite de ${MANUT_FOTOS_MAX}); as demais foram ignoradas.`);
+  const lote=imagens.slice(0,vagas);
+  if(!lote.length)return;
+  form.processando+=lote.length;renderManutencaoForm();
+  for(const arquivo of lote){
+    try{
+      const blob=await manutComprimirImagem(arquivo);
+      if(MANUT_FORM!==form)return; // fechou ou trocou de formulário no meio
+      form.novas.push({blob,previewUrl:URL.createObjectURL(blob)});
+    }catch(e){
+      if(MANUT_FORM===form)avisoErro("Não foi possível ler uma das imagens. Tente outra foto.");
+    }
+    if(MANUT_FORM!==form)return;
+    form.processando--;renderManutencaoForm();
   }
-  if(MANUT_FORM){MANUT_FORM.processando=false;renderManutencaoForm();}
 }
+// Apaga do storage (melhor esforço: nunca trava nem muda o resultado do salvamento).
+async function manutApagarArquivos(paths){
+  if(!paths||!paths.length)return;
+  try{await supabaseClient.storage.from("manutencoes").remove(paths);}catch(e){}
+}
+// Ordem segura: 1) envia as fotos NOVAS; 2) grava a linha; 3) só então apaga do
+// storage as fotos REMOVIDAS. Falha no meio nunca perde foto antiga: se o envio ou
+// a gravação falharem, as fotos novas já enviadas são apagadas e tudo fica como estava.
 async function manutSalvar(){
-  if(!manutPodeCriar()||!MANUT_FORM||MANUT_FORM.salvando||MANUT_FORM.processando)return;
-  const descricao=(MANUT_FORM.descricao||"").trim();
+  const form=MANUT_FORM;
+  if(!form||form.salvando||form.processando>0)return;
+  const editando=!!form.id;
+  const original=editando?MANUTENCOES.find(x=>x.id===form.id):null;
+  if(editando){if(!original||!manutPodeEditarPedido(original))return;}
+  else if(!manutPodeCriar())return;
+  const descricao=(form.descricao||"").trim();
   if(!descricao){avisoErro("Descreva o problema.");return;}
-  MANUT_FORM.salvando=true;
+  form.salvando=true;
   const b=document.getElementById("mt-salvar");if(b){b.disabled=true;b.textContent="Salvando...";}
-  let fotoPath=null;
-  if(MANUT_FORM.foto){
-    fotoPath=`${RESTAURANTE_ID}/${crypto.randomUUID()}.jpg`;
-    const{error:up}=await supabaseClient.storage.from("manutencoes").upload(fotoPath,MANUT_FORM.foto,{contentType:"image/jpeg"});
-    if(up){MANUT_FORM.salvando=false;renderManutencaoForm();avisoErro("Não foi possível enviar a foto. O pedido não foi salvo.");return;}
+  const enviados=[];
+  const falhar=async(msg)=>{await manutApagarArquivos(enviados);form.salvando=false;if(MANUT_FORM===form)renderManutencaoForm();avisoErro(msg);};
+  for(const n of form.novas){
+    const path=`${RESTAURANTE_ID}/${crypto.randomUUID()}.jpg`;
+    const{error:up}=await supabaseClient.storage.from("manutencoes").upload(path,n.blob,{contentType:"image/jpeg"});
+    if(up){await falhar(editando?"Não foi possível enviar uma das fotos. Nada foi alterado.":"Não foi possível enviar uma das fotos. O pedido não foi salvo.");return;}
+    enviados.push(path);
   }
-  const{error}=await supabaseClient.from("manutencoes").insert({restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,descricao,foto_path:fotoPath});
-  if(error){
-    if(fotoPath)await supabaseClient.storage.from("manutencoes").remove([fotoPath]); // não deixa foto órfã
-    MANUT_FORM.salvando=false;renderManutencaoForm();
-    avisoErro("Não foi possível salvar o pedido.");return;
+  const fotos=[...form.existentes,...enviados];
+  const campos={descricao,foto_path:fotos[0]||null,fotos_paths:fotos};
+  if(editando){
+    const{data,error}=await supabaseClient.from("manutencoes").update(campos).eq("id",form.id).select("id");
+    if(error||!data||data.length===0){await falhar("Sem permissão para editar este pedido, ou não foi possível salvar. Nada foi alterado.");return;}
+    const removidas=original.fotos.filter(p=>!fotos.includes(p));
+    await manutApagarArquivos(removidas);
+    removidas.forEach(p=>delete MANUT_URLS[p]);
+    delete MANUT_ARQUIVOS[form.id];
+  }else{
+    const{error}=await supabaseClient.from("manutencoes").insert({restaurante_id:RESTAURANTE_ID,criado_por:USER_ID,...campos});
+    if(error){await falhar("Não foi possível salvar o pedido.");return;}
   }
   manutDescartarForm();
   await carregarManutencoes();
-  MANUT_ABA="abertos";
+  if(!editando)MANUT_ABA="abertos";
   await manutPrepararUrls();
   renderManutencaoModal();
   manutPrefetchArquivos();
-  showToast("✅ Pedido de manutenção salvo!");
+  showToast(editando?"✅ Pedido atualizado!":"✅ Pedido de manutenção salvo!");
 }
 
 // --- Concluir / reabrir / excluir ---
@@ -5143,20 +5267,20 @@ function manutConfirmarExcluir(id){
   if(!manutPodeEditar())return;
   document.getElementById("modal").innerHTML=`<div class="mov" onclick="if(event.target===this)renderManutencaoModal()"><div class="mbox">
     <h3>🗑️ Excluir pedido</h3>
-    <p class="msub">Esse pedido (e a foto, se tiver) será apagado. Essa ação não pode ser desfeita.</p>
+    <p class="msub">Esse pedido (e as fotos, se tiver) será apagado. Essa ação não pode ser desfeita.</p>
     <div class="macts"><button onclick="renderManutencaoModal()">Cancelar</button><button class="brd mt-confirmar-excluir" onclick="manutExcluir('${id}')">Sim, excluir</button></div>
   </div></div>`;
 }
 async function manutExcluir(id){
   if(!manutPodeEditar())return;
   const m=MANUTENCOES.find(x=>x.id===id);
-  // Linha primeiro: se a permissão negar, a foto continua intacta. Foto depois,
-  // sem travar nada se a remoção falhar (sobra um arquivo solto, sem pedido).
+  // Linha primeiro: se a permissão negar, as fotos continuam intactas. Fotos depois,
+  // sem travar nada se a remoção falhar (sobra arquivo solto, sem pedido).
   const{data,error}=await supabaseClient.from("manutencoes").delete().eq("id",id).select("id");
   if(error||!data||data.length===0){avisoErro("Sem permissão para excluir este pedido.");renderManutencaoModal();return;}
-  if(m&&m.fotoPath){
-    try{await supabaseClient.storage.from("manutencoes").remove([m.fotoPath]);}catch(e){}
-    delete MANUT_URLS[m.fotoPath];
+  if(m&&m.fotos.length){
+    await manutApagarArquivos(m.fotos);
+    m.fotos.forEach(p=>delete MANUT_URLS[p]);
   }
   delete MANUT_ARQUIVOS[id];
   await carregarManutencoes();
@@ -5169,31 +5293,31 @@ function manutTextoWhatsapp(m){
   const rest=RESTAURANTE_NOME?` — ${RESTAURANTE_NOME}`:"";
   return `🔧 Pedido de manutenção${rest}\n\n${m.descricao}\n\nAberto em ${manutFmtData(m.criadoEm)}`;
 }
-// Caminho principal: Web Share API com arquivo (foto + texto juntos no menu de
-// compartilhar do celular, onde a pessoa escolhe o WhatsApp e o contato).
-// Fallback (navegador sem suporte a arquivo): wa.me com o texto e, se houver
-// foto, um link assinado de 7 dias (o de 1h da tela expiraria cedo demais).
+// Caminho principal: Web Share API com TODAS as fotos como arquivos (foto + texto
+// juntos no menu de compartilhar do celular, onde a pessoa escolhe o WhatsApp e o
+// contato). Só compartilha como arquivo se todas as fotos foram baixadas e o
+// navegador aceitar (canShare). Fallback: wa.me com o texto e, se houver fotos, os
+// links assinados de 7 dias de TODAS (o de 1h da tela expiraria cedo demais).
 async function manutCompartilhar(id){
   const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
   const texto=manutTextoWhatsapp(m);
-  let arquivo=MANUT_ARQUIVOS[id]||null;
-  if(!arquivo&&m.fotoPath&&navigator.canShare&&navigator.share){
-    try{
-      const url=await manutUrlAssinada(m.fotoPath,3600);
-      if(url){const blob=await(await fetch(url)).blob();arquivo=new File([blob],"manutencao.jpg",{type:blob.type||"image/jpeg"});MANUT_ARQUIVOS[id]=arquivo;}
-    }catch(e){arquivo=null;}
+  let arquivos=null;
+  if(m.fotos.length&&navigator.canShare&&navigator.share){
+    const c=MANUT_ARQUIVOS[id];
+    if(c&&c.chave===m.fotos.join("|"))arquivos=c.files;
+    else{try{arquivos=await manutBaixarArquivos(m);}catch(e){arquivos=null;}}
   }
-  const dados=arquivo?{files:[arquivo],text:texto,title:"Pedido de manutenção"}:null;
-  if(dados&&navigator.canShare&&navigator.canShare(dados)){
+  const dados=arquivos&&arquivos.length===m.fotos.length?{files:arquivos,text:texto,title:"Pedido de manutenção"}:null;
+  if(dados&&navigator.canShare(dados)){
     try{await navigator.share(dados);return;}
     catch(e){if(e&&e.name==="AbortError")return;} // cancelou: não abre mais nada; outro erro cai no fallback
   }
-  let link="";
-  if(m.fotoPath){
-    const u=await manutUrlAssinada(m.fotoPath,7*24*3600);
-    if(u)link=`\n\n📷 Foto: ${u}`;
+  let links="";
+  if(m.fotos.length){
+    const urls=await Promise.all(m.fotos.map(p=>manutUrlAssinada(p,7*24*3600)));
+    urls.forEach((u,i)=>{if(u)links+=`\n\n📷 ${m.fotos.length>1?`Foto ${i+1}`:"Foto"}: ${u}`;});
   }
-  window.open("https://wa.me/?text="+encodeURIComponent(texto+link),"_blank");
+  window.open("https://wa.me/?text="+encodeURIComponent(texto+links),"_blank");
 }
 
 async function carregarEquipeEPracas(){
