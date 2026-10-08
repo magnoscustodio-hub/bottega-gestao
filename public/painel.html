@@ -107,6 +107,16 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .lightbox.galeria .lightbox-nav{display:flex}
 .lightbox-count{position:fixed;top:24px;left:50%;transform:translateX(-50%);color:white;font-size:14px;font-weight:700;z-index:1101;display:none;background:rgba(0,0,0,.4);padding:2px 12px;border-radius:12px}
 .lightbox.galeria .lightbox-count{display:block}
+/* Legenda do visualizador (só nos pedidos de Manutenção): descrição + datas, faixa fixa
+   embaixo. Sem .com-legenda (menu do Evento) nada disso vale e o visualizador fica como era. */
+.lightbox-legenda{display:none}
+.lightbox.com-legenda{flex-direction:column;align-items:stretch;justify-content:flex-start}
+.lightbox.com-legenda img{flex:1 1 0;min-height:0;width:100%;max-height:none}
+.lightbox.com-legenda .lightbox-legenda{display:flex;flex-direction:column;flex:0 0 auto;max-height:32vh;overflow:hidden;background:rgba(0,0,0,.65);color:#fff;padding:12px 16px calc(14px + env(safe-area-inset-bottom,0px));z-index:1101}
+/* só o texto rola; a data fica sempre visível embaixo */
+.lg-texto{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;font-size:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.lg-data{flex:0 0 auto;font-size:12px;color:rgba(255,255,255,.72);margin-top:6px}
+.lg-texto,.lg-data{width:100%;max-width:760px;align-self:center}
 .lightbox-close{position:fixed;top:16px;right:16px;width:40px;height:40px;border-radius:50%;border:none;background:rgba(255,255,255,.15);color:white;font-size:20px;cursor:pointer;z-index:1101;display:flex;align-items:center;justify-content:center}
 
 /* Nível de acesso "consulta": esconde os pontos de edição mais óbvios.
@@ -534,6 +544,7 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     <button class="lightbox-nav prev" onclick="lbNavegar(-1)" aria-label="Foto anterior">‹</button>
     <button class="lightbox-nav next" onclick="lbNavegar(1)" aria-label="Próxima foto">›</button>
     <img id="lightbox-img" src="">
+    <div id="lightbox-legenda" class="lightbox-legenda"><div id="lightbox-legenda-texto" class="lg-texto"></div><div id="lightbox-legenda-data" class="lg-data"></div></div>
   </div>
 </div>
 
@@ -4783,9 +4794,16 @@ function lbPintar(){
   const c=document.getElementById('lightbox-count');if(c)c.textContent=(LB_I+1)+'/'+LB_FOTOS.length;
   document.getElementById('lightbox').classList.toggle('galeria',LB_FOTOS.length>1);
 }
-function lbAbrir(urls,i){
+// legenda (opcional): {texto,data}, a mesma em todas as fotos. Sem ela o visualizador
+// é o de sempre (menu do Evento).
+function lbAbrir(urls,i,legenda){
   LB_FOTOS=urls;LB_I=Math.min(Math.max(i||0,0),urls.length-1);
   lbPintar();
+  const lb=document.getElementById('lightbox');
+  document.getElementById('lightbox-legenda-texto').textContent=legenda?legenda.texto:'';
+  document.getElementById('lightbox-legenda-data').textContent=legenda?legenda.data:'';
+  lb.classList.toggle('com-legenda',!!legenda);
+  const lt=document.getElementById('lightbox-legenda-texto');if(lt)lt.scrollTop=0;
   document.getElementById('lightbox').classList.add('aberto');
   const vp=document.querySelector('meta[name="viewport"]');
   if(vp&&!window._viewportOriginal){window._viewportOriginal=vp.getAttribute('content');vp.setAttribute('content','width=device-width, initial-scale=1.0');}
@@ -4793,7 +4811,7 @@ function lbAbrir(urls,i){
 // Uma foto só (imagem do cardápio do Evento): comportamento de sempre, sem setas.
 function abrirLightbox(url){lbAbrir([url],0);}
 // Várias fotos (pedido de Manutenção): setas, contador, teclado e deslize.
-function abrirLightboxGaleria(urls,i){lbAbrir(urls,i);}
+function abrirLightboxGaleria(urls,i,legenda){lbAbrir(urls,i,legenda);}
 function lbNavegar(d){
   if(LB_FOTOS.length<2)return;
   LB_I=(LB_I+d+LB_FOTOS.length)%LB_FOTOS.length;lbPintar();
@@ -4811,10 +4829,17 @@ if(typeof document.addEventListener==='function'){
   let _sx=null;
   const lbEl=document.getElementById('lightbox');
   if(lbEl&&lbEl.addEventListener){
-    lbEl.addEventListener('touchstart',e=>{_sx=(e.touches.length===1&&!(window.visualViewport&&window.visualViewport.scale>1.05))?e.touches[0].clientX:null;},{passive:true});
+    // Deslizar troca de foto só se for um gesto horizontal e não começar na legenda
+    // (rolar a legenda não pode trocar de foto).
+    let _sy=null;
+    lbEl.addEventListener('touchstart',e=>{
+      const naLegenda=!!(e.target&&e.target.closest&&e.target.closest('#lightbox-legenda'));
+      const ok=e.touches.length===1&&!naLegenda&&!(window.visualViewport&&window.visualViewport.scale>1.05);
+      _sx=ok?e.touches[0].clientX:null;_sy=ok?e.touches[0].clientY:null;
+    },{passive:true});
     lbEl.addEventListener('touchend',e=>{
-      if(_sx==null)return;const dx=e.changedTouches[0].clientX-_sx;_sx=null;
-      if(Math.abs(dx)>50)lbNavegar(dx<0?1:-1);
+      if(_sx==null)return;const dx=e.changedTouches[0].clientX-_sx,dy=e.changedTouches[0].clientY-_sy;_sx=null;
+      if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy))lbNavegar(dx<0?1:-1);
     },{passive:true});
   }
 }
@@ -5081,10 +5106,24 @@ function manutFechar(){
 }
 function manutSetAba(a){MANUT_ABA=a;MANUT_SEL=null;renderManutencaoModal();}
 // Abre o visualizador (lightbox) nas fotos do pedido, com navegação entre elas.
-function manutAbrirFotos(id,i){
-  const m=MANUTENCOES.find(x=>x.id===id);if(!m)return;
+// Legenda do visualizador: descrição completa + "aberto em dd/mm" (e "concluído em
+// dd/mm" nos concluídos, se a data de conclusão existe).
+function manutLegenda(m){
+  let data=`aberto em ${manutFmtDataCurta(m.criadoEm)}`;
+  if(m.concluido&&m.concluidoEm)data+=` · concluído em ${manutFmtDataCurta(m.concluidoEm)}`;
+  return{texto:m.descricao,data};
+}
+async function manutAbrirFotos(id,i){
+  const m=MANUTENCOES.find(x=>x.id===id);if(!m||!m.fotos.length)return;
+  if(m.fotos.some(p=>!manutUrlCache(p)))await manutPrepararUrls(); // links de 1h vencidos: renova
   const urls=m.fotos.map(manutUrlCache).filter(Boolean);
-  if(urls.length)abrirLightboxGaleria(urls,i||0);
+  if(urls.length)abrirLightboxGaleria(urls,i||0,manutLegenda(m));
+}
+// Toque no cartão do pedido (fora do modo de seleção): abre as fotos. Os botões de
+// ação (e a área entre eles) não abrem nada; pedido sem foto também não.
+function manutAbrirItem(ev,id){
+  if(ev&&ev.target&&ev.target.closest&&ev.target.closest('.mt-acoes,button'))return;
+  manutAbrirFotos(id,0);
 }
 
 function renderManutencaoModal(){
@@ -5107,12 +5146,12 @@ function renderManutencaoModal(){
       const url=m.fotos.length?manutUrlCache(m.fotos[0]):null;
       const mais=m.fotos.length>1?`<span class="mt-mais" style="position:absolute;right:3px;bottom:3px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3">+${m.fotos.length-1}</span>`:"";
       const thumb=url
-        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" onclick="${selecionando?"event.stopPropagation();":""}manutAbrirFotos('${m.id}',0)" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;cursor:pointer;border:1px solid var(--border)">${mais}</div>`
+        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;border:1px solid var(--border)">${mais}</div>`
         :`<div style="position:relative;width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotos.length?"📷":"🔧"}${mais}</div>`;
       const btn="";
       const marcado=selecionando&&MANUT_SEL.has(m.id);
       const caixa=selecionando?`<span class="mt-caixa${marcado?" on":""}" aria-hidden="true">${marcado?"✓":""}</span>`:"";
-      itens+=`<div class="mt-item${marcado?" mt-marcado":""}" data-id="${m.id}"${selecionando?` onclick="manutAlternarSel('${m.id}')" role="checkbox" aria-checked="${marcado}"`:""} style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${marcado?"var(--blue)":"var(--border)"};padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}${selecionando?";cursor:pointer":""}">
+      itens+=`<div class="mt-item${marcado?" mt-marcado":""}" data-id="${m.id}"${selecionando?` onclick="manutAlternarSel('${m.id}')" role="checkbox" aria-checked="${marcado}"`:(m.fotos.length?` onclick="manutAbrirItem(event,'${m.id}')" onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();manutAbrirItem(event,'${m.id}')}" role="button" tabindex="0"`:"")} style="background:var(--surface);border-radius:var(--r);border:1.5px solid ${marcado?"var(--blue)":"var(--border)"};padding:12px;margin-bottom:10px;box-shadow:var(--shadow);${m.concluido?"opacity:.75":""}${selecionando||m.fotos.length?";cursor:pointer":""}">
         <div style="display:flex;gap:12px;align-items:flex-start">
           ${caixa}${thumb}
           <div style="flex:1;min-width:0">
