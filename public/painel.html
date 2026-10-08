@@ -107,6 +107,40 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .lightbox.galeria .lightbox-nav{display:flex}
 .lightbox-count{position:fixed;top:24px;left:50%;transform:translateX(-50%);color:white;font-size:14px;font-weight:700;z-index:1101;display:none;background:rgba(0,0,0,.4);padding:2px 12px;border-radius:12px}
 .lightbox.galeria .lightbox-count{display:block}
+/* MANUTENÇÃO: editor de marcação das fotos (tela cheia, acima do visualizador). O desenho
+   usa pointer events; touch-action:none impede rolar/dar zoom enquanto o dedo desenha. */
+.marcador{display:none;position:fixed;top:0;left:0;right:0;bottom:0;height:100vh;height:100dvh;z-index:1200;background:#111;color:#fff;flex-direction:column;touch-action:none;overscroll-behavior:contain;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+.marcador.aberto{display:flex}
+.marc-topo{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top,0px))}
+.marc-titulo{flex:1;text-align:center;font-size:14px;font-weight:700}
+.marc-btn{border:none;border-radius:18px;padding:8px 14px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;background:rgba(255,255,255,.16);color:#fff}
+.marc-btn.marc-ok{background:#fff;color:#111}
+.marc-btn:disabled,.marc-acao:disabled{opacity:.4;cursor:default}
+.marc-btn.marc-perigo{background:#E53935}
+.marc-aviso{flex:0 0 auto;background:#7b1f1f;color:#fff;font-size:12px;padding:6px 12px;text-align:center}
+.marc-area{position:relative;flex:1 1 0;min-height:0;display:flex;align-items:center;justify-content:center;padding:16px}
+.marc-palco{position:relative;background:#222;touch-action:none}
+.marc-palco canvas{position:absolute;left:0;top:0;width:100%;height:100%;touch-action:none;-webkit-user-select:none;user-select:none}
+.marc-carregando{position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-size:13px;color:#ccc}
+.marc-barra{flex:0 0 auto;background:#000;padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px))}
+.marc-linha{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.marc-linha:last-child{margin-bottom:0}
+.marc-linha{max-width:520px;margin-left:auto;margin-right:auto}
+.marc-ferr,.marc-acao{border:none;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;background:rgba(255,255,255,.14);color:#fff;white-space:nowrap}
+.marc-ferr{flex:1}
+.marc-ferr.on{background:#fff;color:#111}
+.marc-cor{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.45);padding:0;cursor:pointer;flex:none}
+.marc-cor.on{border:3px solid #fff;box-shadow:0 0 0 2px #000}
+.marc-esp{flex:1}
+.marc-confirma{display:none;position:absolute;inset:0;background:rgba(0,0,0,.7);align-items:center;justify-content:center;padding:24px;z-index:2}
+.marc-confirma.aberto{display:flex}
+.marc-confirma-box{background:#222;border-radius:12px;padding:18px;max-width:320px;width:100%}
+.marc-confirma-t{font-size:15px;font-weight:800;margin-bottom:4px}
+.marc-confirma-s{font-size:13px;color:#bbb;margin-bottom:14px}
+.marc-confirma-b{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* Pílula "Marcar" nas fotos do formulário */
+.mt-marcar-foto{position:absolute;left:4px;bottom:4px;border:none;border-radius:12px;background:rgba(0,0,0,.68);color:#fff;font-size:11px;font-weight:700;padding:4px 9px;cursor:pointer;font-family:inherit}
+.mt-marcar-foto:disabled{opacity:.5;cursor:default}
 /* Legenda do visualizador (só nos pedidos de Manutenção): descrição + datas, faixa fixa
    embaixo. Sem .com-legenda (menu do Evento) nada disso vale e o visualizador fica como era. */
 .lightbox-legenda{display:none}
@@ -545,6 +579,41 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
     <button class="lightbox-nav next" onclick="lbNavegar(1)" aria-label="Próxima foto">›</button>
     <img id="lightbox-img" src="">
     <div id="lightbox-legenda" class="lightbox-legenda"><div id="lightbox-legenda-texto" class="lg-texto"></div><div id="lightbox-legenda-data" class="lg-data"></div></div>
+  </div>
+  <div id="marcador" class="marcador" role="dialog" aria-modal="true" aria-label="Marcar foto">
+    <div class="marc-topo">
+      <button class="marc-btn" id="marc-cancelar" onclick="marcCancelar()">Cancelar</button>
+      <span class="marc-titulo">Marcar foto</span>
+      <button class="marc-btn marc-ok" id="marc-concluir" onclick="marcConcluir()">Concluir</button>
+    </div>
+    <div id="marc-aviso" class="marc-aviso" style="display:none"></div>
+    <div id="marc-area" class="marc-area">
+      <div id="marc-palco" class="marc-palco"><canvas id="marc-base"></canvas><canvas id="marc-ativo"></canvas></div>
+      <div id="marc-carregando" class="marc-carregando">Carregando foto...</div>
+    </div>
+    <div class="marc-barra">
+      <div class="marc-linha">
+        <button class="marc-ferr on" data-f="caneta" onclick="marcFerramenta('caneta')">✎ Caneta</button>
+        <button class="marc-ferr" data-f="seta" onclick="marcFerramenta('seta')">↗ Seta</button>
+        <button class="marc-ferr" data-f="circulo" onclick="marcFerramenta('circulo')">◯ Círculo</button>
+      </div>
+      <div class="marc-linha">
+        <button class="marc-cor on" data-c="#E53935" style="background:#E53935" aria-label="Vermelho" onclick="marcCor('#E53935')"></button>
+        <button class="marc-cor" data-c="#FFD600" style="background:#FFD600" aria-label="Amarelo" onclick="marcCor('#FFD600')"></button>
+        <button class="marc-cor" data-c="#FFFFFF" style="background:#FFFFFF" aria-label="Branco" onclick="marcCor('#FFFFFF')"></button>
+        <button class="marc-cor" data-c="#000000" style="background:#000000" aria-label="Preto" onclick="marcCor('#000000')"></button>
+        <span class="marc-esp"></span>
+        <button class="marc-acao" id="marc-desfazer" onclick="marcDesfazer()" disabled>↶ Desfazer</button>
+        <button class="marc-acao" id="marc-limpar" onclick="marcLimpar()" disabled>Limpar</button>
+      </div>
+    </div>
+    <div id="marc-confirma" class="marc-confirma">
+      <div class="marc-confirma-box">
+        <div class="marc-confirma-t">Descartar marcações?</div>
+        <div class="marc-confirma-s">Os traços desta foto serão perdidos.</div>
+        <div class="marc-confirma-b"><button class="marc-btn" onclick="marcConfirmaVoltar()">Continuar editando</button><button class="marc-btn marc-perigo" onclick="marcFechar()">Descartar</button></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -5195,18 +5264,21 @@ function renderManutencaoModal(){
 function manutNovo(){
   if(!manutPodeCriar())return;
   manutDescartarForm();
-  MANUT_FORM={id:null,descricao:"",existentes:[],novas:[],processando:0,salvando:false};
+  MANUT_FORM={id:null,descricao:"",existentes:[],novas:[],processando:0,ocupado:0,salvando:false};
   renderManutencaoForm();
 }
 function manutEditar(id){
   const m=MANUTENCOES.find(x=>x.id===id);
   if(!m||!manutPodeEditarPedido(m))return;
   manutDescartarForm();
-  MANUT_FORM={id,descricao:m.descricao,existentes:[...m.fotos],novas:[],processando:0,salvando:false};
+  MANUT_FORM={id,descricao:m.descricao,existentes:[...m.fotos],novas:[],processando:0,ocupado:0,salvando:false};
   renderManutencaoForm();
 }
 function manutDescartarForm(){
-  if(MANUT_FORM)MANUT_FORM.novas.forEach(n=>{if(n.previewUrl)URL.revokeObjectURL(n.previewUrl);});
+  if(MANUT_FORM){
+    MANUT_FORM.novas.forEach(n=>{if(n.previewUrl)URL.revokeObjectURL(n.previewUrl);});
+    MANUT_FORM.existentes.forEach(e=>{if(typeof e!=="string"&&e.previewUrl)URL.revokeObjectURL(e.previewUrl);}); // fotos salvas já marcadas
+  }
   MANUT_FORM=null;
 }
 function manutCancelarForm(){manutDescartarForm();renderManutencaoModal();}
@@ -5214,9 +5286,10 @@ function renderManutencaoForm(){
   const f=MANUT_FORM,editando=!!f.id;
   const total=f.existentes.length+f.novas.length,cheio=total+f.processando>=MANUT_FOTOS_MAX;
   const btnFoto=`flex:1;padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit${cheio?";opacity:.45;cursor:not-allowed":""}`;
-  const tile=(src,onclick,cls)=>`<div class="mt-foto-tile ${cls}" style="position:relative;aspect-ratio:1/1;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface2)">${src?`<img src="${src}" alt="Foto" style="width:100%;height:100%;object-fit:cover;display:block">`:`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>`}<button class="mt-remover-foto" onclick="${onclick}" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:13px;cursor:pointer">✕</button></div>`;
-  const tiles=f.existentes.map((p,i)=>tile(manutUrlCache(p),`manutRemoverFoto('e',${i})`,"mt-tile-existente")).join("")
-    +f.novas.map((n,i)=>tile(n.previewUrl,`manutRemoverFoto('n',${i})`,"mt-tile-nova")).join("")
+  const ocup=(f.processando||0)+(f.ocupado||0);
+  const tile=(src,onclick,cls,onmarcar)=>`<div class="mt-foto-tile ${cls}" style="position:relative;aspect-ratio:1/1;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface2)">${src?`<img src="${src}" alt="Foto" style="width:100%;height:100%;object-fit:cover;display:block">`:`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>`}<button class="mt-remover-foto" onclick="${onclick}" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:13px;cursor:pointer">✕</button><button class="mt-marcar-foto" onclick="${onmarcar}"${f.salvando?" disabled":""}>✏️ Marcar</button></div>`;
+  const tiles=f.existentes.map((e,i)=>tile(typeof e==="string"?manutUrlCache(e):e.previewUrl,`manutRemoverFoto('e',${i})`,"mt-tile-existente",`manutMarcar('e',${i})`)).join("")
+    +f.novas.map((n,i)=>tile(n.previewUrl,`manutRemoverFoto('n',${i})`,"mt-tile-nova",`manutMarcar('n',${i})`)).join("")
     +Array.from({length:f.processando},()=>`<div class="mt-foto-tile mt-tile-processando" style="aspect-ratio:1/1;border-radius:var(--rs);border:1px dashed var(--border-s);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3)">...</div>`).join("");
   document.getElementById("modal").innerHTML=`
     <div class="mov" onclick="if(event.target===this)manutFechar()"><div class="mbox">
@@ -5228,23 +5301,23 @@ function renderManutencaoForm(){
         <button class="mt-tirar" onclick="document.getElementById('mt-foto-cam').click()"${cheio?" disabled":""} style="${btnFoto}">📷 Tirar foto</button>
         <button class="mt-galeria" onclick="document.getElementById('mt-foto-gal').click()"${cheio?" disabled":""} style="${btnFoto}">🖼️ Galeria</button>
       </div>
-      <div class="mt-contador" style="font-size:11px;color:var(--text3);margin-bottom:8px">${total} de ${MANUT_FOTOS_MAX} fotos${cheio?" · limite atingido":""}${f.processando?` · processando ${f.processando}...`:""}</div>
+      <div class="mt-contador" style="font-size:11px;color:var(--text3);margin-bottom:8px">${total} de ${MANUT_FOTOS_MAX} fotos${cheio?" · limite atingido":""}${ocup?` · processando ${ocup}...`:""}</div>
       ${tiles?`<div class="mt-grade" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px">${tiles}</div>`:""}
       <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;font-weight:600">Descrição</label>
       <textarea id="mt-desc" class="minp" rows="4" placeholder="Ex: Freezer da cozinha não está gelando" oninput="MANUT_FORM.descricao=this.value" style="resize:vertical">${manutEsc(f.descricao)}</textarea>
-      <div class="macts"><button onclick="manutCancelarForm()">Cancelar</button><button class="bok mt-salvar" id="mt-salvar" onclick="manutSalvar()"${f.salvando||f.processando?" disabled":""}>${f.salvando?"Salvando...":"Salvar"}</button></div>
+      <div class="macts"><button onclick="manutCancelarForm()">Cancelar</button><button class="bok mt-salvar" id="mt-salvar" onclick="manutSalvar()"${f.salvando||ocup?" disabled":""}>${f.salvando?"Salvando...":"Salvar"}</button></div>
     </div></div>`;
 }
 function manutRemoverFoto(tipo,i){
   const f=MANUT_FORM;if(!f)return;
-  if(tipo==="e")f.existentes.splice(i,1);
+  if(tipo==="e"){const e=f.existentes.splice(i,1)[0];if(e&&typeof e!=="string"&&e.previewUrl)URL.revokeObjectURL(e.previewUrl);}
   else{const n=f.novas.splice(i,1)[0];if(n&&n.previewUrl)URL.revokeObjectURL(n.previewUrl);}
   renderManutencaoForm();
 }
 // Foto de celular é grande: reduz pra no máximo MANUT_FOTO_MAX no lado maior e
 // regrava em JPEG antes do envio. createImageBitmap aplica a orientação do EXIF
 // (foto tirada em pé não chega deitada).
-async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO_QUALIDADE){
+async function manutImagemParaCanvas(file,max=MANUT_FOTO_MAX){
   let fonte=null,w,h,urlTmp=null,bmp=null;
   if(typeof createImageBitmap==="function"){
     try{bmp=await createImageBitmap(file,{imageOrientation:"from-image"});}catch(e){bmp=null;}
@@ -5263,10 +5336,200 @@ async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO
   ctx.drawImage(fonte,0,0,cw,ch);
   if(bmp&&bmp.close)bmp.close();
   if(urlTmp)URL.revokeObjectURL(urlTmp);
+  return canvas;
+}
+async function manutCanvasParaJpeg(canvas,qualidade=MANUT_FOTO_QUALIDADE){
   const blob=await new Promise(res=>canvas.toBlob(res,"image/jpeg",qualidade));
   if(!blob)throw new Error("canvas");
   return blob;
 }
+async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO_QUALIDADE){
+  return manutCanvasParaJpeg(await manutImagemParaCanvas(file,max),qualidade);
+}
+// ===== Marcação de fotos: desenhar sobre a foto (caneta, seta, círculo), estilo editor do WhatsApp =====
+// O desenho é guardado em coordenadas da FOTO (no máximo MANUT_FOTO_MAX de lado), não da
+// tela: ao concluir, a foto e os traços são desenhados no tamanho real e gravados como um
+// JPEG comum (mesma compressão das outras fotos). A foto marcada ocupa o lugar da original.
+const MARC_CORES=["#E53935","#FFD600","#FFFFFF","#000000"];
+const MARC_NOMES_CORES=["Vermelho","Amarelo","Branco","Preto"];
+const MARC_ESPESSURA=5; // px na tela; a espessura real é proporcional ao tamanho da foto
+let MARC=null;          // editor aberto: {form,tipo,alvo,token,fundo,base,ativo,w,h,tracos,atual,pid,ferramenta,cor,carregando,aplicando}
+const marcEl=id=>document.getElementById(id);
+
+function marcDesenhar(ctx,s){
+  ctx.save();
+  ctx.strokeStyle=s.cor;ctx.fillStyle=s.cor;ctx.lineWidth=s.lw;ctx.lineCap="round";ctx.lineJoin="round";
+  if(s.t==="caneta"){
+    const p=s.pts;
+    let minx=p[0][0],maxx=minx,miny=p[0][1],maxy=miny;
+    p.forEach(q=>{minx=Math.min(minx,q[0]);maxx=Math.max(maxx,q[0]);miny=Math.min(miny,q[1]);maxy=Math.max(maxy,q[1]);});
+    if(p.length===1||Math.hypot(maxx-minx,maxy-miny)<s.lw*0.5){ // toque simples: um ponto
+      ctx.beginPath();ctx.arc(p[0][0],p[0][1],s.lw/2,0,Math.PI*2);ctx.fill();
+    }else{
+      ctx.beginPath();ctx.moveTo(p[0][0],p[0][1]);
+      for(let i=1;i<p.length-1;i++){ // curvas pelos pontos médios: traço liso mesmo com poucos pontos
+        const mx=(p[i][0]+p[i+1][0])/2,my=(p[i][1]+p[i+1][1])/2;
+        ctx.quadraticCurveTo(p[i][0],p[i][1],mx,my);
+      }
+      const u=p[p.length-1];ctx.lineTo(u[0],u[1]);ctx.stroke();
+    }
+  }else if(s.t==="seta"){
+    const[x1,y1]=s.a,[x2,y2]=s.b;
+    const ang=Math.atan2(y2-y1,x2-x1),cab=Math.max(s.lw*4.5,10),dist=Math.hypot(x2-x1,y2-y1);
+    const rec=Math.min(cab*0.8,dist);
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2-Math.cos(ang)*rec,y2-Math.sin(ang)*rec);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x2,y2);
+    ctx.lineTo(x2-cab*Math.cos(ang-0.5),y2-cab*Math.sin(ang-0.5));
+    ctx.lineTo(x2-cab*Math.cos(ang+0.5),y2-cab*Math.sin(ang+0.5));
+    ctx.closePath();ctx.fill();
+  }else if(s.t==="circulo"){
+    const[x1,y1]=s.a,[x2,y2]=s.b;
+    ctx.beginPath();ctx.ellipse((x1+x2)/2,(y1+y2)/2,Math.max(Math.abs(x2-x1)/2,1),Math.max(Math.abs(y2-y1)/2,1),0,0,Math.PI*2);ctx.stroke();
+  }
+  ctx.restore();
+}
+function marcRedesenhar(){
+  const ctx=MARC.base.getContext("2d");
+  ctx.clearRect(0,0,MARC.w,MARC.h);ctx.drawImage(MARC.fundo,0,0);
+  MARC.tracos.forEach(s=>marcDesenhar(ctx,s));
+}
+function marcPintarAtual(){
+  const c=MARC.ativo,ctx=c.getContext("2d");
+  ctx.clearRect(0,0,c.width,c.height);
+  if(MARC.atual)marcDesenhar(ctx,MARC.atual);
+}
+// Ponto do toque em coordenadas da foto (independe do tamanho em que ela aparece na tela).
+function marcPonto(e){
+  const c=MARC.ativo,r=c.getBoundingClientRect();
+  return[(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height];
+}
+function marcAoPressionar(e){
+  if(!MARC||MARC.carregando||MARC.aplicando||MARC.pid!=null)return; // 2º dedo é ignorado
+  if(e.pointerType==="mouse"&&e.button!==0)return;
+  e.preventDefault();
+  const c=MARC.ativo;try{c.setPointerCapture(e.pointerId);}catch(x){}
+  MARC.pid=e.pointerId;
+  const r=c.getBoundingClientRect(),p=marcPonto(e);
+  MARC.atual={t:MARC.ferramenta,cor:MARC.cor,lw:Math.max(2,MARC_ESPESSURA*c.width/r.width),pts:[p],a:p,b:p};
+  marcPintarAtual();
+}
+function marcAoMover(e){
+  if(!MARC||!MARC.atual||e.pointerId!==MARC.pid)return;
+  e.preventDefault();
+  const evs=(e.getCoalescedEvents&&e.getCoalescedEvents())||[];
+  for(const ev of (evs.length?evs:[e])){const p=marcPonto(ev);MARC.atual.pts.push(p);MARC.atual.b=p;}
+  marcPintarAtual();
+}
+function marcAoSoltar(e){
+  if(!MARC||e.pointerId!==MARC.pid)return;
+  const s=MARC.atual;MARC.pid=null;MARC.atual=null;
+  try{MARC.ativo.releasePointerCapture(e.pointerId);}catch(x){}
+  if(s&&e.type==="pointerup"){const p=marcPonto(e);s.pts.push(p);s.b=p;}
+  marcPintarAtual(); // limpa a camada do traço em andamento
+  if(!s||e.type==="pointercancel")return; // o navegador tomou o gesto: descarta o traço
+  if(s.t!=="caneta"&&Math.hypot(s.b[0]-s.a[0],s.b[1]-s.a[1])<s.lw*1.5)return; // seta/círculo sem tamanho (toque simples)
+  MARC.tracos.push(s);marcDesenhar(MARC.base.getContext("2d"),s);marcAtualizarUI();
+}
+// Foto inteira visível na área do editor (proporção mantida), com margem nas bordas
+// (o gesto de "voltar" do iPhone parte da borda esquerda da tela).
+function marcAjustar(){
+  if(!MARC||!MARC.w)return;
+  const area=marcEl("marc-area"),palco=marcEl("marc-palco"),cs=getComputedStyle(area);
+  const aw=area.clientWidth-parseFloat(cs.paddingLeft)-parseFloat(cs.paddingRight);
+  const ah=area.clientHeight-parseFloat(cs.paddingTop)-parseFloat(cs.paddingBottom);
+  const esc=Math.min(aw/MARC.w,ah/MARC.h);
+  palco.style.width=Math.max(1,Math.floor(MARC.w*esc))+"px";palco.style.height=Math.max(1,Math.floor(MARC.h*esc))+"px";
+}
+function marcAtualizarUI(){
+  if(!MARC)return;
+  document.querySelectorAll(".marc-ferr").forEach(b=>b.classList.toggle("on",b.dataset.f===MARC.ferramenta));
+  document.querySelectorAll(".marc-cor").forEach(b=>b.classList.toggle("on",b.dataset.c===MARC.cor));
+  const tem=MARC.tracos.length>0,bloq=MARC.carregando||MARC.aplicando;
+  [["marc-desfazer"],["marc-limpar"]].forEach(([id])=>{const b=marcEl(id);if(b){b.disabled=!tem||bloq;}});
+  const ok=marcEl("marc-concluir");if(ok){ok.disabled=!!bloq;ok.textContent=MARC.aplicando?"Aplicando...":"Concluir";}
+}
+function marcFerramenta(f){if(MARC){MARC.ferramenta=f;marcAtualizarUI();}}
+function marcCor(c){if(MARC){MARC.cor=c;marcAtualizarUI();}}
+function marcDesfazer(){if(!MARC||MARC.carregando||MARC.aplicando||!MARC.tracos.length)return;MARC.tracos.pop();marcRedesenhar();marcAtualizarUI();}
+function marcLimpar(){if(!MARC||MARC.carregando||MARC.aplicando||!MARC.tracos.length)return;MARC.tracos=[];marcRedesenhar();marcAtualizarUI();}
+function marcAviso(msg){const a=marcEl("marc-aviso");if(a){a.textContent=msg||"";a.style.display=msg?"block":"none";}}
+
+// Abre o editor numa foto do formulário: tipo "e" (já salva, ou já marcada) ou "n" (nova), índice i.
+async function marcAbrir(tipo,i){
+  const f=MANUT_FORM;if(!f||f.salvando||MARC)return;
+  const alvo=tipo==="e"?f.existentes[i]:f.novas[i];if(alvo==null)return;
+  const token={};
+  MARC={form:f,tipo,alvo,token,fundo:null,base:marcEl("marc-base"),ativo:marcEl("marc-ativo"),w:0,h:0,tracos:[],atual:null,pid:null,ferramenta:"caneta",cor:MARC_CORES[0],carregando:true,aplicando:false};
+  marcAviso("");marcEl("marc-confirma").classList.remove("aberto");
+  marcEl("marcador").classList.add("aberto");marcEl("marc-carregando").style.display="flex";marcAtualizarUI();
+  try{
+    const fonte=tipo==="n"?alvo.blob:(typeof alvo==="string"?await manutArquivo(alvo):alvo.blob);
+    const fundo=await manutImagemParaCanvas(fonte);
+    if(!MARC||MARC.token!==token)return; // cancelou enquanto carregava
+    MARC.fundo=fundo;MARC.w=fundo.width;MARC.h=fundo.height;
+    MARC.base.width=MARC.ativo.width=MARC.w;MARC.base.height=MARC.ativo.height=MARC.h;
+    marcRedesenhar();marcPintarAtual();
+    MARC.carregando=false;marcEl("marc-carregando").style.display="none";
+    marcAjustar();marcAtualizarUI();
+  }catch(e){
+    if(MARC&&MARC.token===token){marcFechar();avisoErro("Não foi possível abrir a foto para marcar. Tente de novo.");}
+  }
+}
+function marcFechar(){
+  marcEl("marcador").classList.remove("aberto");marcEl("marc-confirma").classList.remove("aberto");
+  if(MARC){MARC.base.width=MARC.base.height=MARC.ativo.width=MARC.ativo.height=1;} // libera a memória dos canvases
+  MARC=null;
+}
+// Cancelar: com traços pede confirmação; sem traços só fecha.
+function marcCancelar(){
+  if(!MARC||MARC.aplicando)return;
+  if(MARC.tracos.length)marcEl("marc-confirma").classList.add("aberto");else marcFechar();
+}
+function marcConfirmaVoltar(){marcEl("marc-confirma").classList.remove("aberto");}
+// Concluir: sem traços fecha sem mexer na foto; com traços gera o JPEG e a foto marcada
+// substitui a original no mesmo lugar. O Salvar do pedido fica travado (form.ocupado) até acabar.
+async function marcConcluir(){
+  const m=MARC;if(!m||m.carregando||m.aplicando)return;
+  if(!m.tracos.length){marcFechar();return;}
+  const{form,tipo,alvo}=m;
+  m.aplicando=true;form.ocupado=(form.ocupado||0)+1;marcAviso("");marcAtualizarUI();
+  try{
+    const blob=await manutCanvasParaJpeg(m.base);
+    if(MARC&&MARC.token===m.token)marcFechar();
+    if(MANUT_FORM===form)manutAplicarMarcacao(form,tipo,alvo,blob);
+  }catch(e){
+    if(MARC&&MARC.token===m.token){m.aplicando=false;marcAtualizarUI();marcAviso("Não foi possível aplicar a marcação. Tente de novo.");}
+  }finally{
+    form.ocupado=Math.max(0,(form.ocupado||0)-1);
+    if(MANUT_FORM===form&&!MARC)renderManutencaoForm();
+  }
+}
+// Troca a imagem da foto marcada no formulário, SEM mudar a posição dela. Foto já salva vira
+// {path,blob,previewUrl} (o caminho antigo é apagado do storage só depois que o pedido gravar).
+function manutAplicarMarcacao(form,tipo,alvo,blob){
+  const url=URL.createObjectURL(blob);
+  const lista=tipo==="n"?form.novas:form.existentes,i=lista.indexOf(alvo);
+  if(i<0){URL.revokeObjectURL(url);return false;} // a foto foi removida nesse meio tempo
+  if(typeof alvo==="string"){lista[i]={path:alvo,blob,previewUrl:url};return true;}
+  if(alvo.previewUrl)URL.revokeObjectURL(alvo.previewUrl);
+  alvo.blob=blob;alvo.previewUrl=url;
+  return true;
+}
+function manutMarcar(tipo,i){marcAbrir(tipo,i);}
+
+if(typeof document.addEventListener==="function"){
+  const ativo=marcEl("marc-ativo");
+  if(ativo&&ativo.addEventListener){
+    ativo.addEventListener("pointerdown",marcAoPressionar);
+    ativo.addEventListener("pointermove",marcAoMover);
+    ativo.addEventListener("pointerup",marcAoSoltar);
+    ativo.addEventListener("pointercancel",marcAoSoltar);
+    ativo.addEventListener("contextmenu",e=>e.preventDefault());
+  }
+  window.addEventListener&&window.addEventListener("resize",marcAjustar);
+  document.addEventListener("keydown",e=>{if(e.key==="Escape"&&MARC)marcCancelar();});
+}
+
 // Aceita 1 foto (câmera) ou várias de uma vez (galeria). Respeita o limite total
 // (existentes + novas + as que ainda estão sendo processadas) e comprime uma de cada vez.
 async function manutFotoEscolhida(input){
@@ -5304,7 +5567,7 @@ async function manutApagarArquivos(paths){
 // a gravação falharem, as fotos novas já enviadas são apagadas e tudo fica como estava.
 async function manutSalvar(){
   const form=MANUT_FORM;
-  if(!form||form.salvando||form.processando>0)return;
+  if(!form||form.salvando||form.processando>0||form.ocupado>0)return;
   const editando=!!form.id;
   const original=editando?MANUTENCOES.find(x=>x.id===form.id):null;
   if(editando){if(!original||!manutPodeEditarPedido(original))return;}
@@ -5315,13 +5578,26 @@ async function manutSalvar(){
   const b=document.getElementById("mt-salvar");if(b){b.disabled=true;b.textContent="Salvando...";}
   const enviados=[];
   const falhar=async(msg)=>{await manutApagarArquivos(enviados);form.salvando=false;if(MANUT_FORM===form)renderManutencaoForm();avisoErro(msg);};
-  for(const n of form.novas){
+  // fotos salvas que foram marcadas (objetos em existentes) sobem como arquivos novos e ocupam o
+  // mesmo lugar; o caminho antigo só é apagado depois que o pedido gravar (vira "removida" abaixo)
+  const subst=new Map(),envNovas=[];
+  const enviar=async n=>{
     const path=`${RESTAURANTE_ID}/${crypto.randomUUID()}.jpg`;
     const{error:up}=await supabaseClient.storage.from("manutencoes").upload(path,n.blob,{contentType:"image/jpeg"});
-    if(up){await falhar(editando?"Não foi possível enviar uma das fotos. Nada foi alterado.":"Não foi possível enviar uma das fotos. O pedido não foi salvo.");return;}
-    enviados.push(path);
+    if(up)return null;
+    enviados.push(path);return path;
+  };
+  const falhaUpload=editando?"Não foi possível enviar uma das fotos. Nada foi alterado.":"Não foi possível enviar uma das fotos. O pedido não foi salvo.";
+  for(const e of form.existentes){
+    if(typeof e==="string")continue;
+    const path=await enviar(e);if(!path){await falhar(falhaUpload);return;}
+    subst.set(e,path);
   }
-  const fotos=[...form.existentes,...enviados];
+  for(const n of form.novas){
+    const path=await enviar(n);if(!path){await falhar(falhaUpload);return;}
+    envNovas.push(path);
+  }
+  const fotos=[...form.existentes.map(e=>typeof e==="string"?e:subst.get(e)),...envNovas];
   const campos={descricao,foto_path:fotos[0]||null,fotos_paths:fotos};
   if(editando){
     const{data,error}=await supabaseClient.from("manutencoes").update(campos).eq("id",form.id).select("id");
