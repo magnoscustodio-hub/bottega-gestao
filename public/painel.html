@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<!-- Abre a conexão com o Supabase (DNS + TCP + TLS) enquanto o resto da página ainda baixa -->
+<link rel="preconnect" href="https://ufsdmlyrbkvgrlemvzde.supabase.co" crossorigin>
+<link rel="dns-prefetch" href="https://ufsdmlyrbkvgrlemvzde.supabase.co">
 <title>GestãoSalão — Painel</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -4384,12 +4387,15 @@ function agMapeiaLinha(r){
     menuImagemPath:r.menu_imagem_path,
   };
 }
-async function carregarAgenda(){
-  const{data,error}=await supabaseClient
+function buscarAgenda(){
+  return supabaseClient
     .from("agenda_compromissos")
     .select("*")
     .eq("restaurante_id",RESTAURANTE_ID)
     .order("data");
+}
+async function carregarAgenda(){aplicarAgenda(await buscarAgenda());}
+function aplicarAgenda({data,error}){
   if(error){avisoErro("Não foi possível carregar a agenda.");return;}
   AGENDA=(data||[]).map(agMapeiaLinha);
   atualizarBadgeEventos();
@@ -5114,8 +5120,11 @@ function manutFotosDe(r){
 function manutMapeia(r){
   return{id:r.id,descricao:r.descricao,fotos:manutFotosDe(r),concluido:!!r.concluido,concluidoEm:r.concluido_em||null,criadoEm:r.created_at,criadoPor:r.criado_por||null};
 }
-async function carregarManutencoes(){
-  const{data,error}=await supabaseClient.from("manutencoes").select("*").eq("restaurante_id",RESTAURANTE_ID).order("created_at",{ascending:false});
+function buscarManutencoes(){
+  return supabaseClient.from("manutencoes").select("*").eq("restaurante_id",RESTAURANTE_ID).order("created_at",{ascending:false});
+}
+async function carregarManutencoes(){return aplicarManutencoes(await buscarManutencoes());}
+function aplicarManutencoes({data,error}){
   if(error){MANUT_DISPONIVEL=false;MANUTENCOES=[];atualizarBadgeManutencao();return false;}
   MANUT_DISPONIVEL=true;
   MANUTENCOES=(data||[]).map(manutMapeia);
@@ -5882,13 +5891,24 @@ async function manutEnviarSelecionados(){
   }finally{MANUT_ENVIANDO=false;}
 }
 
-async function carregarEquipeEPracas(){
-  const{data:setoresRows}=await supabaseClient
-    .from("setores")
-    .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio,data_saida,eh_cumim)")
-    .eq("restaurante_id",RESTAURANTE_ID)
-    .order("ordem");
-
+// "buscar*" só faz a(s) consulta(s); "aplicar*" é o mesmo código de mapeamento de sempre. O boot()
+// busca tudo junto e aplica na ordem de antes; "carregar*" (usado no resto do app) faz as duas coisas.
+// (allSettled: aplicarEquipe aplica os setores e só depois propaga a falha das praças, como antes)
+function buscarEquipe(){
+  return Promise.allSettled([
+    supabaseClient
+      .from("setores")
+      .select("*, funcionarios(id,nome,cargo,praca_preferencial_id,data_inicio,data_saida,eh_cumim)")
+      .eq("restaurante_id",RESTAURANTE_ID)
+      .order("ordem"),
+    supabaseClient
+      .from("pracas").select("*").eq("restaurante_id",RESTAURANTE_ID).order("ordem"),
+  ]);
+}
+async function carregarEquipeEPracas(){aplicarEquipe(await buscarEquipe());}
+function aplicarEquipe([setoresR,pracasR]){
+  if(setoresR.status==="rejected")throw setoresR.reason;
+  const setoresRows=setoresR.value.data;
   EQ={};FUNC_ID_POR_NOME={};CARGO_POR_NOME={};CUMIM_POR_NOME={};DATA_INICIO_POR_NOME={};DATA_SAIDA_POR_NOME={};
   const pracaPreferidaPorFuncionario={};
   (setoresRows||[]).forEach(s=>{
@@ -5907,8 +5927,8 @@ async function carregarEquipeEPracas(){
     });
   });
 
-  const{data:pracasRows}=await supabaseClient
-    .from("pracas").select("*").eq("restaurante_id",RESTAURANTE_ID).order("ordem");
+  if(pracasR.status==="rejected")throw pracasR.reason;
+  const pracasRows=pracasR.value.data;
   PD=(pracasRows||[]).map(p=>({
     id:p.id,n:p.nome,pref:false,fch:false,
     gc:pracaPreferidaPorFuncionario[p.id]||[],
@@ -5942,11 +5962,14 @@ function aplicarLogoNoHeader(){
   if(wrap)wrap.innerHTML=logoOuFallbackHtml(52);
 }
 
-async function carregarHistorico(){
-  const{data,error}=await supabaseClient
+function buscarHistorico(){
+  return supabaseClient
     .from("ausencias")
     .select("data,motivo,funcionarios(nome)")
     .order("data");
+}
+async function carregarHistorico(){aplicarHistorico(await buscarHistorico());}
+function aplicarHistorico({data,error}){
   if(error){avisoErro("Não foi possível carregar o histórico de ausências.");return;}
   const linhas=(data||[]).map(r=>({
     func:r.funcionarios?r.funcionarios.nome:"",
@@ -5959,12 +5982,15 @@ async function carregarHistorico(){
   FERIAS_ROWS=linhas.filter(h=>h.motivo==="Férias");
 }
 
-async function carregarHistoricoFolgasVendidas(){
-  const{data,error}=await supabaseClient
+function buscarHistoricoFolgasVendidas(){
+  return supabaseClient
     .from("folgas_vendidas")
     .select("data,valor,funcionarios(nome)")
     .eq("tipo","domingo")
     .order("data");
+}
+async function carregarHistoricoFolgasVendidas(){aplicarHistoricoFolgasVendidas(await buscarHistoricoFolgasVendidas());}
+function aplicarHistoricoFolgasVendidas({data,error}){
   if(error){avisoErro("Não foi possível carregar o histórico de vendas de folga.");return;}
   HISTORICO_FOLGAS_VENDIDAS=(data||[]).map(r=>({
     func:r.funcionarios?r.funcionarios.nome:"",
@@ -5973,12 +5999,15 @@ async function carregarHistoricoFolgasVendidas(){
     valor:r.valor!=null?Number(r.valor):null,
   })).filter(h=>h.func);
 }
-async function carregarHistoricoFolgasVendidasSemana(){
-  const{data,error}=await supabaseClient
+function buscarHistoricoFolgasVendidasSemana(){
+  return supabaseClient
     .from("folgas_vendidas")
     .select("data,valor,funcionarios(nome)")
     .eq("tipo","semana")
     .order("data");
+}
+async function carregarHistoricoFolgasVendidasSemana(){aplicarHistoricoFolgasVendidasSemana(await buscarHistoricoFolgasVendidasSemana());}
+function aplicarHistoricoFolgasVendidasSemana({data,error}){
   if(error){avisoErro("Não foi possível carregar o histórico de vendas de folga em dias de semana.");return;}
   HISTORICO_FOLGAS_VENDIDAS_SEMANA=(data||[]).map(r=>({
     func:r.funcionarios?r.funcionarios.nome:"",
@@ -6031,24 +6060,40 @@ function feriasBanner(mi,extraStyle){
   return `<div class="albox alor"${extraStyle?` style="${extraStyle}"`:""}>🏖️ <span>${texto} de férias em ${MN[mi]} — retorna${nomes.length>1?"m":""} em ${proxMes}.</span></div>`;
 }
 
-async function carregarOperacional(){
+function periodoDoMes(){
   const ultimoDia=new Date(cy,cm+1,0).getDate();
   const inicio=`${cy}-${String(cm+1).padStart(2,"0")}-01`;
   const fim=`${cy}-${String(cm+1).padStart(2,"0")}-${String(ultimoDia).padStart(2,"0")}`;
-
-  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};AREAS_FECHADAS={};
-
-  const[folgasRes,resRes,extrasRes,escalaRes,fvRes,hpRes,afRes]=await Promise.all([
+  return{inicio,fim};
+}
+// As 7 consultas do mês, em dois grupos: as 3 que NÃO filtram por restaurante (só RLS, podem sair
+// antes de se saber o id) e as 4 que filtram. aplicarOperacional recebe os dois grupos.
+function buscarOperacionalSemRestaurante(){
+  const{inicio,fim}=periodoDoMes();
+  return Promise.all([
     supabaseClient.from("folgas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
-    supabaseClient.from("reservas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
-    supabaseClient.from("extras").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
-    supabaseClient.from("escala_manual").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("folgas_vendidas").select("data,funcionarios(nome)").gte("data",inicio).lte("data",fim),
     // "*" (em vez de listar colunas) pra não quebrar o carregamento se a coluna
     // hora_saida ainda não existir no banco.
     supabaseClient.from("horarios_pontuais").select("*,funcionarios(nome)").gte("data",inicio).lte("data",fim),
+  ]);
+}
+function buscarOperacionalComRestaurante(){
+  const{inicio,fim}=periodoDoMes();
+  return Promise.all([
+    supabaseClient.from("reservas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
+    supabaseClient.from("extras").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
+    supabaseClient.from("escala_manual").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
     supabaseClient.from("areas_fechadas").select("*").eq("restaurante_id",RESTAURANTE_ID).gte("data",inicio).lte("data",fim),
   ]);
+}
+async function carregarOperacional(){
+  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};AREAS_FECHADAS={};
+  const[semRest,comRest]=await Promise.all([buscarOperacionalSemRestaurante(),buscarOperacionalComRestaurante()]);
+  aplicarOperacional(semRest,comRest);
+}
+function aplicarOperacional([folgasRes,fvRes,hpRes],[resRes,extrasRes,escalaRes,afRes]){
+  FOLGAS={};RES={};EXTRAS={};ESCALA_MANUAL={};FOLGAS_VENDIDAS={};HORARIOS_PONTUAIS={};AREAS_FECHADAS={};
 
   FOLGAS[cm]=FOLGAS[cm]||{};
   (folgasRes.data||[]).forEach(r=>{
@@ -6100,11 +6145,57 @@ async function carregarOperacional(){
   recalcFeriasDoMes();
 }
 
+// Consultas simples do boot que antes ficavam inline.
+function buscarHorariosEspeciais(){
+  return supabaseClient
+    .from("horarios_especiais")
+    .select("dias,hora,funcionarios(nome)");
+}
+function aplicarHorariosEspeciais({data:horariosRows}){
+  HORARIOS={};
+  (horariosRows||[]).forEach(r=>{
+    const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome)return;
+    HORARIOS[nome]={dias:r.dias,hora:r.hora};
+  });
+}
+function buscarPax(){
+  return supabaseClient
+    .from("pax_esperado").select("*").eq("restaurante_id",RESTAURANTE_ID);
+}
+function aplicarPax({data:paxRows}){
+  (paxRows||[]).forEach(r=>{
+    if(!PAX[r.dia_semana])PAX[r.dia_semana]={a:0,j:0};
+    PAX[r.dia_semana][r.turno==="almoco"?"a":"j"]=r.quantidade;
+  });
+}
+function buscarDiasFechados(){
+  return supabaseClient
+    .from("dias_fechados").select("*").eq("restaurante_id",RESTAURANTE_ID);
+}
+function aplicarDiasFechados({data:fechadosRows}){
+  FJ={};(fechadosRows||[]).forEach(r=>{FJ[r.dia_semana]=r.turno;});
+}
+
+// Abertura em 2 rodadas de rede (antes eram 12, uma atrás da outra).
+//  Rodada 1: o restaurante do usuário + tudo o que não precisa do id do restaurante (só RLS).
+//  Rodada 2: o resto, tudo junto, assim que o id do restaurante é conhecido.
+// Os resultados só são APLICADOS depois que tudo chegou, na mesma ordem e com o mesmo código
+// de antes (aplicar*): o estado final é o mesmo, mesmo que as respostas cheguem fora de ordem.
 async function boot(){
   const{data:sessionData}=await supabaseClient.auth.getSession();
   if(!sessionData.session){window.location.href="login";return;}
   const userId=sessionData.session.user.id;
   USER_ID=userId;
+
+  // Já saem agora, junto com a busca do restaurante. Promise.resolve é o que dispara a consulta (o
+  // objeto do supabase-js só envia quando alguém chama .then) e o .catch vazio só evita aviso de
+  // "erro não tratado" se o boot sair antes (ex.: redirecionamento); o erro real aparece no Promise.all.
+  const solto=b=>{const p=Promise.resolve(b);p.catch(()=>{});return p;};
+  const pHorarios=solto(buscarHorariosEspeciais());
+  const pHistorico=solto(buscarHistorico());
+  const pFvDom=solto(buscarHistoricoFolgasVendidas());
+  const pFvSem=solto(buscarHistoricoFolgasVendidasSemana());
+  const pOpSem=solto(buscarOperacionalSemRestaurante());
 
   // Caminho do dono (Master) — igual a antes, sem nenhuma mudança de comportamento.
   const{data:restauranteDono,error:restErrorDono}=await supabaseClient
@@ -6147,37 +6238,34 @@ async function boot(){
   // resto do boot() (carregar equipe, praças, operacional etc.).
   atualizarCardClima();
 
-  await carregarEquipeEPracas();
+  // Rodada 2
+  const pEquipe=solto(buscarEquipe());
+  const pPax=solto(buscarPax());
+  const pFech=solto(buscarDiasFechados());
+  const pOpCom=solto(buscarOperacionalComRestaurante());
+  // a migração do localStorage (1x por aparelho, volta na hora se já foi feita) precisa terminar
+  // antes de ler a agenda, como sempre foi
+  const pAgenda=solto((async()=>{await migrarAgendaLocalStorage();return buscarAgenda();})());
+  const pManut=solto(buscarManutencoes());
 
-  const{data:horariosRows}=await supabaseClient
-    .from("horarios_especiais")
-    .select("dias,hora,funcionarios(nome)");
-  HORARIOS={};
-  (horariosRows||[]).forEach(r=>{
-    const nome=r.funcionarios?r.funcionarios.nome:null;if(!nome)return;
-    HORARIOS[nome]={dias:r.dias,hora:r.hora};
-  });
+  // Espera TODAS as respostas (allSettled) e aplica na MESMA ordem de antes. Se alguma consulta
+  // tiver sido rejeitada (exceção de rede; erros normais vêm como {error} e são tratados no
+  // aplicar*), o boot para naquele ponto e propaga o erro, exatamente como quando as consultas
+  // eram feitas uma atrás da outra: o que vinha antes já foi aplicado, o que vem depois não.
+  const r=await Promise.allSettled([pEquipe,pHorarios,pPax,pFech,pHistorico,pFvDom,pFvSem,pOpSem,pOpCom,pAgenda,pManut]);
+  const v=i=>{if(r[i].status==="rejected")throw r[i].reason;return r[i].value;};
 
-  const{data:paxRows}=await supabaseClient
-    .from("pax_esperado").select("*").eq("restaurante_id",RESTAURANTE_ID);
-  (paxRows||[]).forEach(r=>{
-    if(!PAX[r.dia_semana])PAX[r.dia_semana]={a:0,j:0};
-    PAX[r.dia_semana][r.turno==="almoco"?"a":"j"]=r.quantidade;
-  });
-
-  const{data:fechadosRows}=await supabaseClient
-    .from("dias_fechados").select("*").eq("restaurante_id",RESTAURANTE_ID);
-  FJ={};(fechadosRows||[]).forEach(r=>{FJ[r.dia_semana]=r.turno;});
-
-  await carregarHistorico();
-  await carregarHistoricoFolgasVendidas();
-  await carregarHistoricoFolgasVendidasSemana();
-  await carregarOperacional();
-
-  await migrarAgendaLocalStorage();
-  await carregarAgenda();
+  aplicarEquipe(v(0));
+  aplicarHorariosEspeciais(v(1));
+  aplicarPax(v(2));
+  aplicarDiasFechados(v(3));
+  aplicarHistorico(v(4));
+  aplicarHistoricoFolgasVendidas(v(5));
+  aplicarHistoricoFolgasVendidasSemana(v(6));
+  aplicarOperacional(v(7),v(8));
+  aplicarAgenda(v(9));
   // Badge de Manutenção já no boot (falha silenciosa se a tabela ainda não existir).
-  await carregarManutencoes();
+  aplicarManutencoes(v(10));
   renderSeletorMes();
   renderCal();renderEmpty();
 }
