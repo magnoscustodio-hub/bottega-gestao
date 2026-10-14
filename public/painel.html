@@ -5154,12 +5154,38 @@ async function manutUrlAssinada(path,segundos){
   return data.signedUrl;
 }
 const manutUrlCache=p=>(MANUT_URLS[p]&&MANUT_URLS[p].ate>Date.now())?MANUT_URLS[p].url:null;
-// Uma chamada só pra todas as miniaturas da lista (todas as fotos de todos os pedidos).
-async function manutPrepararUrls(){
-  const paths=[...new Set(MANUTENCOES.flatMap(m=>m.fotos))].filter(p=>!manutUrlCache(p));
+// MINIATURAS: foto nova com miniatura tem o original `<uuid>_m.jpg` e a miniatura `<uuid>_t.jpg` (mesma
+// pasta do restaurante, mesmo bucket: as policies de storage já cobrem). Foto antiga (ou cuja miniatura
+// falhou) é só `<uuid>.jpg`. O NOME diz se tem miniatura: nenhuma consulta extra pra descobrir.
+const manutTemMiniatura=p=>/_m\.jpg$/.test(p||"");
+const manutMiniaturaDe=p=>manutTemMiniatura(p)?p.replace(/_m\.jpg$/,"_t.jpg"):null;
+const manutPathLista=p=>manutMiniaturaDe(p)||p;                 // o que a lista/formulário mostram
+const manutUrlLista=p=>manutUrlCache(manutPathLista(p))||manutUrlCache(p); // miniatura, ou a original se faltar
+// Assina um lote de caminhos (uma chamada só) e guarda em cache por 55 min.
+async function manutAssinarLote(paths){
   if(!paths.length)return;
   const{data}=await supabaseClient.storage.from("manutencoes").createSignedUrls(paths,3600);
   (data||[]).forEach(x=>{if(x&&x.signedUrl&&x.path)MANUT_URLS[x.path]={url:x.signedUrl,ate:Date.now()+55*60*1000};});
+}
+// A lista assina SÓ as miniaturas (e a original das fotos antigas), numa chamada em lote. Se alguma
+// miniatura não puder ser assinada, cai pra original dessa foto (nenhuma foto some da lista).
+async function manutPrepararUrls(){
+  const paths=[...new Set(MANUTENCOES.flatMap(m=>m.fotos.map(manutPathLista)))].filter(p=>!manutUrlCache(p));
+  if(!paths.length)return;
+  await manutAssinarLote(paths);
+  const originais=[...new Set(MANUTENCOES.flatMap(m=>m.fotos).filter(p=>manutTemMiniatura(p)&&!manutUrlLista(p)))];
+  if(originais.length)await manutAssinarLote(originais);
+}
+// Links das fotos ORIGINAIS (visualizador, WhatsApp, marcação): só quando precisa, em lote.
+async function manutAssinarOriginais(paths){
+  await manutAssinarLote([...new Set(paths)].filter(p=>!manutUrlCache(p)));
+}
+// Miniatura que não carregou (apagada/expirada): troca por a original, 1 vez só.
+async function manutImgErro(img,original){
+  if(img.dataset&&img.dataset.fb)return;
+  if(img.dataset)img.dataset.fb="1";
+  const u=await manutUrlAssinada(original,3600);
+  if(u)img.src=u;
 }
 // Baixa uma foto como File (pra navigator.share), com cache por caminho: o mesmo
 // arquivo serve ao envio individual e ao envio de vários pedidos. Lança se falhar.
@@ -5179,6 +5205,7 @@ function manutArquivo(path){
 }
 // Todas as fotos do pedido, em ordem (lança se alguma falhar).
 async function manutBaixarArquivos(m){
+  await manutAssinarOriginais(m.fotos.filter(p=>!MANUT_ARQUIVOS[p]));
   const files=[];
   for(const p of m.fotos)files.push(await manutArquivo(p));
   return files;
@@ -5190,7 +5217,8 @@ function manutPrefetchSelecao(){
   if(!MANUT_SEL||!(navigator.canShare&&navigator.share))return;
   const sel=MANUTENCOES.filter(m=>!m.concluido&&MANUT_SEL.has(m.id));
   const total=sel.reduce((n,m)=>n+m.fotos.length,0);
-  sel.forEach(m=>(total<=MANUT_MAX_ARQUIVOS?m.fotos:m.fotos.slice(0,1)).forEach(p=>{manutArquivo(p).catch(()=>{});}));
+  const paths=sel.flatMap(m=>(total<=MANUT_MAX_ARQUIVOS?m.fotos:m.fotos.slice(0,1)));
+  manutAssinarOriginais(paths.filter(p=>!MANUT_ARQUIVOS[p])).catch(()=>{}).then(()=>paths.forEach(p=>{manutArquivo(p).catch(()=>{});}));
 }
 
 async function abrirManutencao(){
@@ -5217,7 +5245,7 @@ function manutLegenda(m){
 }
 async function manutAbrirFotos(id,i){
   const m=MANUTENCOES.find(x=>x.id===id);if(!m||!m.fotos.length)return;
-  if(m.fotos.some(p=>!manutUrlCache(p)))await manutPrepararUrls(); // links de 1h vencidos: renova
+  if(m.fotos.some(p=>!manutUrlCache(p)))await manutAssinarOriginais(m.fotos); // originais do pedido, 1 lote (renova os vencidos)
   const urls=m.fotos.map(manutUrlCache).filter(Boolean);
   if(urls.length)abrirLightboxGaleria(urls,i||0,manutLegenda(m));
 }
@@ -5245,10 +5273,10 @@ function renderManutencaoModal(){
     itens=`<div style="text-align:center;padding:28px 16px;color:var(--text3);font-size:13px">${MANUT_ABA==="abertos"?"Nenhum pedido em aberto.":"Nenhum pedido concluído."}</div>`;
   }else{
     lista.forEach(m=>{
-      const url=m.fotos.length?manutUrlCache(m.fotos[0]):null;
+      const url=m.fotos.length?manutUrlLista(m.fotos[0]):null;
       const mais=m.fotos.length>1?`<span class="mt-mais" style="position:absolute;right:3px;bottom:3px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-weight:800;border-radius:10px;padding:1px 6px;line-height:1.3">+${m.fotos.length-1}</span>`:"";
       const thumb=url
-        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy" style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;border:1px solid var(--border)">${mais}</div>`
+        ?`<div style="position:relative;width:64px;height:64px;flex-shrink:0"><img src="${url}" alt="Foto do pedido" loading="lazy"${manutTemMiniatura(m.fotos[0])?` onerror="manutImgErro(this,'${m.fotos[0]}')"`:""} style="width:64px;height:64px;border-radius:var(--rs);object-fit:cover;border:1px solid var(--border)">${mais}</div>`
         :`<div style="position:relative;width:64px;height:64px;border-radius:var(--rs);background:var(--surface2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${m.fotos.length?"📷":"🔧"}${mais}</div>`;
       const btn="";
       const marcado=selecionando&&MANUT_SEL.has(m.id);
@@ -5325,7 +5353,7 @@ function renderManutencaoForm(){
   const btnFoto=`flex:1;padding:11px 8px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:inherit${cheio?";opacity:.45;cursor:not-allowed":""}`;
   const ocup=(f.processando||0)+(f.ocupado||0);
   const tile=(src,onclick,cls,onmarcar)=>`<div class="mt-foto-tile ${cls}" style="position:relative;aspect-ratio:1/1;border-radius:var(--rs);overflow:hidden;border:1px solid var(--border);background:var(--surface2)">${src?`<img src="${src}" alt="Foto" style="width:100%;height:100%;object-fit:cover;display:block">`:`<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px">📷</div>`}<button class="mt-remover-foto" onclick="${onclick}" style="position:absolute;top:4px;right:4px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.6);color:white;font-size:13px;cursor:pointer">✕</button><button class="mt-marcar-foto" onclick="${onmarcar}"${f.salvando?" disabled":""}>✏️ Marcar</button></div>`;
-  const tiles=f.existentes.map((e,i)=>tile(typeof e==="string"?manutUrlCache(e):e.previewUrl,`manutRemoverFoto('e',${i})`,"mt-tile-existente",`manutMarcar('e',${i})`)).join("")
+  const tiles=f.existentes.map((e,i)=>tile(typeof e==="string"?manutUrlLista(e):e.previewUrl,`manutRemoverFoto('e',${i})`,"mt-tile-existente",`manutMarcar('e',${i})`)).join("")
     +f.novas.map((n,i)=>tile(n.previewUrl,`manutRemoverFoto('n',${i})`,"mt-tile-nova",`manutMarcar('n',${i})`)).join("")
     +Array.from({length:f.processando},()=>`<div class="mt-foto-tile mt-tile-processando" style="aspect-ratio:1/1;border-radius:var(--rs);border:1px dashed var(--border-s);background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text3)">...</div>`).join("");
   document.getElementById("modal").innerHTML=`
@@ -5382,6 +5410,31 @@ async function manutCanvasParaJpeg(canvas,qualidade=MANUT_FOTO_QUALIDADE){
 }
 async function manutComprimirImagem(file,max=MANUT_FOTO_MAX,qualidade=MANUT_FOTO_QUALIDADE){
   return manutCanvasParaJpeg(await manutImagemParaCanvas(file,max),qualidade);
+}
+// Miniatura da lista: ~300px no maior lado, JPEG 0,75, reduzida em passos de metade (evita serrilhado).
+// NUNCA lança: se não der pra gerar devolve null e a foto segue sem miniatura (a lista usa a original).
+const MANUT_MINI_LADO=300,MANUT_MINI_QUALIDADE=0.75;
+async function manutMiniatura(canvas){
+  try{
+    const maior=Math.max(canvas.width,canvas.height);
+    if(maior<=MANUT_MINI_LADO)return null; // já é pequena: a original serve
+    const esc=MANUT_MINI_LADO/maior;
+    const w=Math.max(1,Math.round(canvas.width*esc)),h=Math.max(1,Math.round(canvas.height*esc));
+    let src=canvas;
+    while(src.width/2>=w&&src.height/2>=h){
+      const c=document.createElement("canvas");c.width=Math.round(src.width/2);c.height=Math.round(src.height/2);
+      const x=c.getContext("2d");x.imageSmoothingQuality="high";x.drawImage(src,0,0,c.width,c.height);src=c;
+    }
+    const fin=document.createElement("canvas");fin.width=w;fin.height=h;
+    const fx=fin.getContext("2d");fx.imageSmoothingQuality="high";fx.drawImage(src,0,0,w,h);
+    return await manutCanvasParaJpeg(fin,MANUT_MINI_QUALIDADE);
+  }catch(e){return null;}
+}
+// A foto de sempre (2000px, 0,80) + a miniatura, a partir do MESMO canvas.
+async function manutComprimirComMiniatura(file){
+  const canvas=await manutImagemParaCanvas(file);
+  const blob=await manutCanvasParaJpeg(canvas);
+  return{blob,thumb:await manutMiniatura(canvas)};
 }
 // ===== Marcação de fotos: desenhar sobre a foto (caneta, seta, círculo), estilo editor do WhatsApp =====
 // O desenho é guardado em coordenadas da FOTO (no máximo MANUT_FOTO_MAX de lado), não da
@@ -5532,8 +5585,9 @@ async function marcConcluir(){
   m.aplicando=true;form.ocupado=(form.ocupado||0)+1;marcAviso("");marcAtualizarUI();
   try{
     const blob=await manutCanvasParaJpeg(m.base);
+    const thumb=await manutMiniatura(m.base); // miniatura da foto JÁ marcada (null se falhar: segue sem ela)
     if(MARC&&MARC.token===m.token)marcFechar();
-    if(MANUT_FORM===form)manutAplicarMarcacao(form,tipo,alvo,blob);
+    if(MANUT_FORM===form)manutAplicarMarcacao(form,tipo,alvo,blob,thumb);
   }catch(e){
     if(MARC&&MARC.token===m.token){m.aplicando=false;marcAtualizarUI();marcAviso("Não foi possível aplicar a marcação. Tente de novo.");}
   }finally{
@@ -5543,13 +5597,13 @@ async function marcConcluir(){
 }
 // Troca a imagem da foto marcada no formulário, SEM mudar a posição dela. Foto já salva vira
 // {path,blob,previewUrl} (o caminho antigo é apagado do storage só depois que o pedido gravar).
-function manutAplicarMarcacao(form,tipo,alvo,blob){
+function manutAplicarMarcacao(form,tipo,alvo,blob,thumb){
   const url=URL.createObjectURL(blob);
   const lista=tipo==="n"?form.novas:form.existentes,i=lista.indexOf(alvo);
   if(i<0){URL.revokeObjectURL(url);return false;} // a foto foi removida nesse meio tempo
-  if(typeof alvo==="string"){lista[i]={path:alvo,blob,previewUrl:url};return true;}
+  if(typeof alvo==="string"){lista[i]={path:alvo,blob,thumb,previewUrl:url};return true;}
   if(alvo.previewUrl)URL.revokeObjectURL(alvo.previewUrl);
-  alvo.blob=blob;alvo.previewUrl=url;
+  alvo.blob=blob;alvo.thumb=thumb;alvo.previewUrl=url;
   return true;
 }
 function manutMarcar(tipo,i){marcAbrir(tipo,i);}
@@ -5584,9 +5638,9 @@ async function manutFotoEscolhida(input){
   form.processando+=lote.length;renderManutencaoForm();
   for(const arquivo of lote){
     try{
-      const blob=await manutComprimirImagem(arquivo);
+      const{blob,thumb}=await manutComprimirComMiniatura(arquivo);
       if(MANUT_FORM!==form)return; // fechou ou trocou de formulário no meio
-      form.novas.push({blob,previewUrl:URL.createObjectURL(blob)});
+      form.novas.push({blob,thumb,previewUrl:URL.createObjectURL(blob)});
     }catch(e){
       if(MANUT_FORM===form)avisoErro("Não foi possível ler uma das imagens. Tente outra foto.");
     }
@@ -5595,9 +5649,11 @@ async function manutFotoEscolhida(input){
   }
 }
 // Apaga do storage (melhor esforço: nunca trava nem muda o resultado do salvamento).
+// Cada foto com miniatura leva a miniatura junto (mesma chamada, sem duplicar).
 async function manutApagarArquivos(paths){
   if(!paths||!paths.length)return;
-  try{await supabaseClient.storage.from("manutencoes").remove(paths);}catch(e){}
+  const todos=[...new Set(paths.flatMap(p=>[p,manutMiniaturaDe(p)]).filter(Boolean))];
+  try{await supabaseClient.storage.from("manutencoes").remove(todos);}catch(e){}
 }
 // Ordem segura: 1) envia as fotos NOVAS; 2) grava a linha; 3) só então apaga do
 // storage as fotos REMOVIDAS. Falha no meio nunca perde foto antiga: se o envio ou
@@ -5618,8 +5674,20 @@ async function manutSalvar(){
   // fotos salvas que foram marcadas (objetos em existentes) sobem como arquivos novos e ocupam o
   // mesmo lugar; o caminho antigo só é apagado depois que o pedido gravar (vira "removida" abaixo)
   const subst=new Map(),envNovas=[];
+  // A miniatura sobe ANTES do original: só se ela subiu o original ganha o "_m" no nome (é o que diz
+  // à lista que tem miniatura). Falha SÓ da miniatura não impede nada: o original sobe sem "_m" e a
+  // lista usa a original dessa foto. Falha do original = falha de verdade (as já enviadas são apagadas).
   const enviar=async n=>{
-    const path=`${RESTAURANTE_ID}/${crypto.randomUUID()}.jpg`;
+    const id=crypto.randomUUID();
+    let comMini=false;
+    if(n.thumb){
+      const pathT=`${RESTAURANTE_ID}/${id}_t.jpg`;
+      try{
+        const{error:upT}=await supabaseClient.storage.from("manutencoes").upload(pathT,n.thumb,{contentType:"image/jpeg"});
+        if(!upT){enviados.push(pathT);comMini=true;}
+      }catch(e){}
+    }
+    const path=`${RESTAURANTE_ID}/${id}${comMini?"_m":""}.jpg`;
     const{error:up}=await supabaseClient.storage.from("manutencoes").upload(path,n.blob,{contentType:"image/jpeg"});
     if(up)return null;
     enviados.push(path);return path;
@@ -5641,7 +5709,7 @@ async function manutSalvar(){
     if(error||!data||data.length===0){await falhar("Sem permissão para editar este pedido, ou não foi possível salvar. Nada foi alterado.");return;}
     const removidas=original.fotos.filter(p=>!fotos.includes(p));
     await manutApagarArquivos(removidas);
-    removidas.forEach(p=>delete MANUT_URLS[p]);
+    removidas.forEach(p=>{delete MANUT_URLS[p];delete MANUT_URLS[manutPathLista(p)];});
     removidas.forEach(p=>{delete MANUT_ARQUIVOS[p];});
     delete MANUT_PREP[form.id];
   }else{
@@ -5683,7 +5751,7 @@ async function manutExcluir(id){
   if(error||!data||data.length===0){avisoErro("Sem permissão para excluir este pedido.");renderManutencaoModal();return;}
   if(m&&m.fotos.length){
     await manutApagarArquivos(m.fotos);
-    m.fotos.forEach(p=>delete MANUT_URLS[p]);
+    m.fotos.forEach(p=>{delete MANUT_URLS[p];delete MANUT_URLS[manutPathLista(p)];});
   }
   if(m)m.fotos.forEach(p=>{delete MANUT_ARQUIVOS[p];});
   await carregarManutencoes();
@@ -5722,7 +5790,7 @@ function manutAbrirWhatsapp(texto){window.open(manutUrlWhatsapp(texto),"_blank")
 // (foto não baixou, ou outro erro do share). pre: Promise dos arquivos, se já iniciada.
 async function manutTentarShare(lista,fotosPorPedido,texto,pre){
   let arquivos;
-  try{arquivos=await(pre||Promise.all(fotosPorPedido.flat().map(manutArquivo)));}
+  try{arquivos=await(pre||(async()=>{const ps=fotosPorPedido.flat();await manutAssinarOriginais(ps.filter(p=>!MANUT_ARQUIVOS[p]));return Promise.all(ps.map(manutArquivo));})());}
   catch(e){return "erro";}
   arquivos=arquivos.map((f,i)=>new File([f],`manutencao-${i+1}.jpg`,{type:f.type}));
   const dados={files:arquivos,text:texto,title:lista.length===1?"Pedido de manutenção":"Pedidos de manutenção"};
@@ -5777,7 +5845,7 @@ async function manutEnviarVarios(lista){
     const primeiras=lista.map(m=>m.fotos.slice(0,1));
     const n=primeiras.reduce((s,f)=>s+f.length,0);
     if((total>MANUT_MAX_ARQUIVOS||r==="recusado")&&n<total&&n<=MANUT_MAX_ARQUIVOS){
-      const pre=Promise.all(primeiras.flat().map(manutArquivo));
+      const pre=(async()=>{const ps=primeiras.flat();await manutAssinarOriginais(ps.filter(p=>!MANUT_ARQUIVOS[p]));return Promise.all(ps.map(manutArquivo));})();
       pre.catch(()=>{}); // baixa enquanto a pessoa lê o aviso
       const motivo=total>MANUT_MAX_ARQUIVOS
         ?`Os ${lista.length} pedidos têm ${total} fotos, e cada envio aceita até ${MANUT_MAX_ARQUIVOS}.`
