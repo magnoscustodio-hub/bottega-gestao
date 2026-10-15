@@ -1159,8 +1159,11 @@ function toggleAreaFechada(aid,d,mi,tu=gt()){
   // manual de sempre pra colocá-la em outro lugar depois. Reabrir não
   // precisa do inverso, a escala já reconsidera a área no próximo resolverEscala/render.
   if(!estaFechada){
+    // Praça: o move guarda o id (aid). Setor de suporte: o move guarda a CHAVE do setor (aid é o id dele),
+    // então tem que limpar os dois -- senão quem foi movido pra lá some da escala inteira.
+    const chaveSetor=Object.keys(EQ).find(k=>EQ[k].id===aid)||null;
     ajustarEscalaManual(d,mi,tu,a=>{
-      Object.keys(a.moves).forEach(nome=>{if(a.moves[nome]===aid)delete a.moves[nome];});
+      Object.keys(a.moves).forEach(nome=>{if(a.moves[nome]===aid||(chaveSetor&&a.moves[nome]===chaveSetor))delete a.moves[nome];});
     });
   }
   persistirAreasFechadas(ds2s(mi,d),tu,novaLista);
@@ -1603,8 +1606,24 @@ function removerDaPraca(pid,nome,d,mi,tu=gt()){
 // moverParaPraca() pra ser reaproveitada pelo toque-pra-mover da escala
 // principal, sem herdar o re-render (que é específico do modal "Editar").
 // Mesmo ajuste salvo, mesma lógica de persistência nos dois fluxos.
+// Setor de suporte de ORIGEM da pessoa (chave em EQ), ou null se ela é garçom (praça não tem "origem").
+function setorSuporteNativoDe(nome){return Object.keys(EQ).find(k=>k!=="garcons"&&EQ[k].m.includes(nome))||null;}
+// Mover alguém de volta pro SEU setor de suporte não é um "ajuste": apaga o move dela (em vez de gravar
+// moves[nome]="seu próprio setor", que deixava o dia marcado como "com ajuste manual" sem mudar nada).
+// Se o dia ficar sem nenhum ajuste, a linha do banco é apagada em vez de gravar um ajuste vazio.
+// O toque-pra-mover e o modal "Editar" usam esta MESMA função: o resultado é sempre o mesmo.
 function aplicarMoverParaPraca(pid,nome,d,mi,tu=gt()){
-  ajustarEscalaManual(d,mi,tu,a=>{a.moves[nome]=pid;a.removidos=a.removidos.filter(n=>n!==nome);});
+  const chave=`${mi}_${d}_${tu}`;
+  const existia=ESCALA_MANUAL[chave]!==undefined;
+  const atual=getEscalaManual(d,mi,tu)||{moves:{},removidos:[]};
+  if(pid===setorSuporteNativoDe(nome))delete atual.moves[nome];
+  else atual.moves[nome]=pid;
+  atual.removidos=atual.removidos.filter(n=>n!==nome);
+  if(!Object.keys(atual.moves).length&&!atual.removidos.length){
+    if(existia)resetEscalaManual(d,mi,tu); // sem resíduo: some do banco também
+    return;
+  }
+  setEscalaManual(d,mi,atual,tu);
 }
 function moverParaPraca(pid,nome,d,mi,tu=gt()){
   if(!nome) return;
@@ -1617,6 +1636,18 @@ function moverParaPraca(pid,nome,d,mi,tu=gt()){
 // Tocar o chip de novo cancela; tocar o chip de OUTRA pessoa troca a seleção;
 // tocar uma praça/área de destino move e limpa a seleção. Consulta não ganha
 // onclick nenhum nos chips (mesmo corte de permissão do 🔒/✏️).
+// A pessoa está na escala deste dia/turno? Está alocada/movida (em "dist": praça ou área de suporte)
+// OU é nativa de uma área de suporte que aparece hoje (fim de semana respeitado), está aberta, não é
+// "sempre extra" e a pessoa está disponível. Quem sai da escala por outro motivo deixa de estar aqui e a
+// seleção é descartada sozinha.
+function pessoaNaEscala(nome,dist,d,mi,tu){
+  if(Object.values(dist).some(l=>l.includes(nome)))return true;
+  if(!disponivelParaEscala(nome,d,mi))return false;
+  const dn=dnom(mi,d),fer=nFer(ds2s(mi,d));
+  const sabDomFer=dn==="Sábado"||dn==="Domingo"||!!fer;
+  const fechadas=getAreasFechadas(d,mi,tu);
+  return Object.keys(EQ).some(k=>k!=="garcons"&&EQ[k].m.includes(nome)&&!EQ[k].semprExtra&&(!EQ[k].fimSemana||sabDomFer)&&!fechadas.includes(EQ[k].id));
+}
 function selecionarParaMover(nome){
   window._moverSel=(window._moverSel===nome)?null:nome;
   if(dSel)renderEsc(dSel,cm);
@@ -1628,6 +1659,9 @@ function cancelarSelecaoMover(){
 function moverPessoaSelecionadaPara(pid,d,mi){
   const nome=window._moverSel;
   if(!nome)return;
+  // área fechada hoje não recebe ninguém (praça: o id; suporte: a chave do setor, cujo id fica em EQ)
+  const fechadas=getAreasFechadas(d,mi);
+  if(fechadas.includes(pid)||(EQ[pid]&&fechadas.includes(EQ[pid].id)))return;
   aplicarMoverParaPraca(pid,nome,d,mi);
   window._moverSel=null;
   renderEsc(d,mi);
@@ -1635,11 +1669,17 @@ function moverPessoaSelecionadaPara(pid,d,mi){
 // Atributos (onclick + destaque visual) injetados em cada chip da escala
 // principal. nome é a identidade real da pessoa (pode diferir do rótulo
 // exibido, que às vezes leva um emoji de setor de origem junto).
+// Valor pra dentro de onclick="...": literal JS entre aspas duplas (JSON escapa ' " \ e quebras de
+// linha) e depois escapado pra HTML (& < > " '). Nome como D'Avila ou Zé "Beto" não quebra mais o
+// atributo nem vira outro nome.
+function jsAttr(v){
+  return JSON.stringify(String(v)).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 function atribMover(nome){
   if(NIVEL_ACESSO==="consulta")return{onclick:"",estiloExtra:""};
   const sel=window._moverSel===nome;
   return{
-    onclick:` onclick="selecionarParaMover('${nome}')"`,
+    onclick:` onclick="selecionarParaMover(${jsAttr(nome)})"`,
     estiloExtra:`cursor:pointer;${sel?"box-shadow:0 0 0 2px var(--gold);":""}`,
   };
 }
@@ -1649,7 +1689,7 @@ function atribMover(nome){
 // pra não ser confundido com os cartões normais da escala.
 function botaoMoverAqui(id,d,mi,jaEstaAqui){
   if(NIVEL_ACESSO==="consulta"||!window._moverSel||jaEstaAqui)return"";
-  return`<button class="edit-only" onclick="moverPessoaSelecionadaPara('${id}',${d},${mi})" style="width:100%;padding:9px;margin-bottom:8px;border-radius:var(--rs);border:1.5px dashed var(--gold-br);background:var(--gold-bg);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">➜ Mover ${window._moverSel} pra cá</button>`;
+  return`<button class="edit-only" onclick="moverPessoaSelecionadaPara('${id}',${d},${mi})" style="width:100%;padding:9px;margin-bottom:8px;border-radius:var(--rs);border:1.5px dashed var(--gold-br);background:var(--gold-bg);color:var(--gold);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">➜ Mover ${manutEsc(window._moverSel)} pra cá</button>`;
 }
 function salvarEscalaManual(d,mi){
   cMod();renderEsc(d,mi);
@@ -2063,7 +2103,7 @@ function renderEsc(d,mi){
   const dist=resolverEscala(d,mi,tu,dg);
   // Defensiva: se quem estava selecionado pra mover sumiu da escala (folga
   // lançada por outra tela, por exemplo), descarta a seleção em silêncio.
-  if(window._moverSel&&!Object.values(dist).some(l=>l.includes(window._moverSel)))window._moverSel=null;
+  if(window._moverSel&&!pessoaNaEscala(window._moverSel,dist,d,mi,tu))window._moverSel=null;
 
   let h=`<div class="esc">`;
 
@@ -2208,7 +2248,7 @@ function renderEsc(d,mi){
   // pra cancelar sem precisar tocar na pessoa nem numa área de destino.
   if(window._moverSel){
     h+=`<div class="sec bg2" style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <span style="font-size:13px;font-weight:600;color:var(--text)">👆 <strong>${window._moverSel}</strong> selecionado(a) — toque na área de destino.</span>
+      <span style="font-size:13px;font-weight:600;color:var(--text)">👆 <strong>${manutEsc(window._moverSel)}</strong> selecionado(a) — toque na área de destino.</span>
       <button onclick="cancelarSelecaoMover()" style="font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid var(--border-s);background:var(--surface);color:var(--text2);cursor:pointer;font-family:inherit;font-weight:700">✕ Cancelar</button>
     </div>`;
   }
