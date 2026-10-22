@@ -372,6 +372,8 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
 /* Duas linhas (nome em cima; função + valor + botão embaixo) em vez de uma
    pill só — com nome+função+valor+botão espremidos numa linha só, "Função"
    cortava nos cards mais estreitos do .cgrid (minmax(130px,1fr)). */
+.macts.xc-acts{gap:6px}.macts.xc-acts button{padding:9px 8px;font-size:12px}
+.extra-abrir{display:block;width:100%;margin:2px 0;padding:8px;border-radius:var(--rs);border:1.5px dashed var(--red-br);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;text-align:center;box-sizing:border-box}
 .extra-input-wrap{display:flex;flex-direction:column;gap:4px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:var(--rs);padding:6px 8px;margin:2px 0;width:100%}
 .extra-input-wrap input,.extra-input-wrap select{border:none;background:transparent;font-size:12px;color:var(--red);font-family:inherit;font-weight:600;width:100%}
 .extra-input-wrap select{font-size:11px}
@@ -1241,23 +1243,231 @@ function chipsExtrasHtml(extras,alvo,d,mi){
     // aparece aqui. Visível no relatório de Extras (stat-cards, Por área/
     // função/funcionário, tabela, Excel).
     const funcaoTxt=e.funcao?`<span style="opacity:.7;font-weight:500"> · ${funcaoELideranca(e.funcao)?ICONE_LIDERANCA_EXTRA+" ":""}${e.funcao}</span>`:"";
-    return `<span class="extra-chip"><span class="ect-txt">⭐${e.nome}${funcaoTxt}</span><button onclick="delExtra('${alvo}',${d},${mi},'${e.nome}');renderEsc(${d},${mi})">×</button></span>`;
+    return `<span class="extra-chip"><span class="ect-txt">⭐${e.nome}${funcaoTxt}</span><button onclick="delExtra('${alvo}',${d},${mi},${jsAttr(e.nome)});renderEsc(${d},${mi})">×</button></span>`;
   }).join("");
 }
-// Campo "+ extra..." (nome + função opcional + valor opcional em R$). Enter em
-// qualquer um dos campos de texto, ou o botão "+", adicionam com o que estiver
-// preenchido — digitar só o nome e apertar Enter continua funcionando igual.
+// Cartão da escala: um único botão "+ extra..." que abre o modal (lista do cadastro + "Extra avulso").
+// Só aparece pra quem pode incluir extras (classe edit-only: escondida no nível Consulta).
 function inputWrapExtraHtml(alvo,d,mi){
-  const idn=`ei-${alvo}`,idv=`eiv-${alvo}`,idf=`eif-${alvo}`;
-  const submeter=`addExtra('${alvo}',${d},${mi},document.getElementById('${idn}').value.trim(),document.getElementById('${idv}').value,document.getElementById('${idf}').value);renderEsc(${d},${mi});`;
-  return `<div class="extra-input-wrap edit-only">
-    <input type="text" placeholder="+ extra..." id="${idn}" onkeydown="if(event.key==='Enter'){${submeter}}">
-    <select id="${idf}"><option value="">Função</option>${FUNCOES_EXTRA.map(f=>`<option value="${f.v}">${f.v}</option>`).join("")}</select>
-    <div class="eiw-linha3">
-      <input type="number" step="0.01" min="0" placeholder="R$" id="${idv}" onkeydown="if(event.key==='Enter'){${submeter}}">
-      <button onclick="${submeter}">+</button>
-    </div>
-  </div>`;
+  return `<button class="edit-only extra-abrir" onclick="abrirExtraModal(${jsAttr(alvo)},${d},${mi})">+ extra...</button>`;
+}
+
+// ===== CADASTRO DE EXTRAS (pessoas que trabalham como extra com frequência) =====
+// Carregado só quando o modal "+ extra..." ou a tela do cadastro é aberta (nenhuma consulta na abertura
+// do app) e mantido em memória. O valor do cadastro NUNCA é desenhado na escala nem no modal de escolha:
+// só na tela do cadastro (Master) e, como sempre, no relatório de Extras. Ao incluir, o extra do dia
+// recebe uma CÓPIA de nome/função/valor via addExtra (a mesma função da digitação manual) -- mudar o
+// cadastro depois não mexe em dias já registrados.
+let EXTRAS_CAD=null;
+function extraChave(nome){
+  return String(nome==null?"":nome).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\s+/g," ").trim().toLowerCase();
+}
+function ordenarExtrasCad(){EXTRAS_CAD.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));}
+async function carregarExtrasCad(forcar){
+  if(EXTRAS_CAD&&!forcar)return EXTRAS_CAD;
+  const{data,error}=await supabaseClient.from("extras_cadastro").select("*").eq("restaurante_id",RESTAURANTE_ID).order("nome");
+  if(error){EXTRAS_CAD=null;return null;}
+  EXTRAS_CAD=(data||[]).map(r=>({id:r.id,nome:r.nome,funcao:r.funcao,valor:r.valor!=null?Number(r.valor):null,ativo:r.ativo!==false}));
+  ordenarExtrasCad();
+  return EXTRAS_CAD;
+}
+function extraJaIncluido(m,nome){
+  return getExtras(m.alvo,m.d,m.mi).some(e=>extraChave(e.nome)===extraChave(nome));
+}
+
+// --- Modal "+ extra..." ---
+async function abrirExtraModal(alvo,d,mi){
+  if(NIVEL_ACESSO==="consulta")return;
+  const m={alvo,d,mi,modo:"lista",busca:"",aviso:"",semLista:false,carregando:true};
+  window._extraModal=m;
+  renderExtraModal();
+  const cad=await carregarExtrasCad();
+  if(window._extraModal!==m)return; // fechou ou abriu outro enquanto carregava
+  m.carregando=false;
+  if(cad===null){
+    m.modo="avulso";m.semLista=true;
+    m.aviso="Não foi possível carregar o cadastro de extras. Você pode digitar o extra avulso.";
+  }else if(!cad.some(c=>c.ativo)){
+    m.modo="avulso";m.semLista=true;
+    m.aviso=NIVEL_ACESSO==="master"
+      ?"Nenhum extra cadastrado. Cadastre em Menu › Configurações › Cadastro de extras. Enquanto isso, digite o extra avulso."
+      :"Nenhum extra cadastrado ainda. O Master cadastra em Configurações › Cadastro de extras. Enquanto isso, digite o extra avulso.";
+  }
+  renderExtraModal();
+}
+function fecharExtraModal(){window._extraModal=null;cMod();}
+function extraModalModo(modo){const m=window._extraModal;if(!m)return;m.modo=modo;renderExtraModal();}
+function extraModalBusca(v){
+  const m=window._extraModal;if(!m)return;
+  m.busca=v;
+  const el=document.getElementById("xm-lista");
+  if(el)el.innerHTML=extraListaHtml();
+}
+function extraListaHtml(){
+  const m=window._extraModal;
+  // Busca sem acento, sem maiúscula e sem pontuação ("davila" acha D'Avila).
+  const solta=s=>extraChave(s).replace(/[^a-z0-9 ]/g,"");
+  const q=solta(m.busca);
+  const itens=(EXTRAS_CAD||[]).filter(c=>c.ativo&&(!q||solta(c.nome).includes(q)||solta(c.funcao).includes(q)));
+  if(!itens.length)return `<div class="aus-empty">Nenhum extra encontrado.</div>`;
+  // Só nome e função -- o valor não entra no HTML deste modal.
+  return itens.map(c=>{
+    const ja=extraJaIncluido(m,c.nome);
+    return `<button class="fs-func-btn" onclick="incluirExtraDoCadastro(${jsAttr(c.id)})"${ja?" disabled style=\"opacity:.55;cursor:default\"":""}><span style="text-align:left"><span style="font-weight:700">${manutEsc(c.nome)}</span><br><small style="color:var(--text2)">${manutEsc(c.funcao||"")}</small></span><span style="font-weight:800;color:var(--text2)">${ja?"já incluído":"+"}</span></button>`;
+  }).join("");
+}
+function renderExtraModal(){
+  const m=window._extraModal;if(!m)return;
+  const area=nomeDaAreaExtra(m.alvo);
+  let h=`<div class="mov" onclick="if(event.target===this)fecharExtraModal()"><div class="mbox" style="max-height:85vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>⭐ Extra · ${manutEsc(area)}</h3><button class="cal-close" onclick="fecharExtraModal()">✕</button></div>`;
+  if(m.carregando){
+    h+=`<div class="aus-empty">Carregando extras cadastrados…</div>`;
+  }else if(m.modo==="avulso"){
+    h+=`${m.aviso?`<p class="msub">${manutEsc(m.aviso)}</p>`:`<p class="msub">Extra avulso: digite o nome, a função e o valor combinado.</p>`}
+    <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Nome</label>
+    <input type="text" id="xa-nome" placeholder="Nome do extra" onkeydown="if(event.key==='Enter')incluirExtraAvulso()" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:10px;font-family:inherit">
+    <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Função</label>
+    <select id="xa-func" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:10px;font-family:inherit"><option value="">Função</option>${FUNCOES_EXTRA.map(f=>`<option value="${f.v}">${f.v}</option>`).join("")}</select>
+    <label style="display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">Valor (R$, opcional)</label>
+    <input type="number" step="0.01" min="0" id="xa-valor" placeholder="R$" onkeydown="if(event.key==='Enter')incluirExtraAvulso()" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:10px;font-family:inherit">
+    <div class="macts">
+      ${m.semLista?"":`<button onclick="extraModalModo('lista')">‹ Lista</button>`}
+      <button onclick="fecharExtraModal()">Cancelar</button>
+      <button class="bok" onclick="incluirExtraAvulso()">Incluir ✓</button>
+    </div>`;
+  }else{
+    const ativos=(EXTRAS_CAD||[]).filter(c=>c.ativo);
+    h+=`<p class="msub">Toque numa pessoa para incluir como extra neste dia.</p>
+    ${ativos.length>6?`<input type="text" id="xm-busca" placeholder="Buscar nome ou função" value="${manutEsc(m.busca)}" oninput="extraModalBusca(this.value)" style="width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:10px;font-family:inherit">`:""}
+    <div id="xm-lista">${extraListaHtml()}</div>
+    <button class="fs-func-btn" onclick="extraModalModo('avulso')" style="margin-top:10px;justify-content:center;color:var(--gold);border-style:dashed">✍️ Extra avulso (digitar)</button>
+    <div class="macts"><button onclick="fecharExtraModal()">Cancelar</button></div>`;
+  }
+  h+=`</div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+// Tocar numa pessoa do cadastro: inclui na hora (mesma função da inclusão manual) e fecha o modal.
+function incluirExtraDoCadastro(id){
+  const m=window._extraModal;
+  if(!m||NIVEL_ACESSO==="consulta")return;
+  const c=(EXTRAS_CAD||[]).find(x=>x.id===id);
+  if(!c||!c.ativo||extraJaIncluido(m,c.nome))return;
+  addExtra(m.alvo,m.d,m.mi,c.nome,c.valor,c.funcao);
+  const{alvo,d,mi}=m;
+  fecharExtraModal();
+  renderEsc(d,mi);
+  showToast("⭐ "+c.nome+" incluído(a) em "+nomeDaAreaExtra(alvo));
+}
+function incluirExtraAvulso(){
+  const m=window._extraModal;
+  if(!m||NIVEL_ACESSO==="consulta")return;
+  const nome=(document.getElementById("xa-nome").value||"").trim();
+  if(!nome){avisoErro("Informe o nome do extra.");return;}
+  if(getExtras(m.alvo,m.d,m.mi).some(e=>e.nome===nome)){avisoErro("Esse extra já está nesta área.");return;}
+  addExtra(m.alvo,m.d,m.mi,nome,document.getElementById("xa-valor").value,document.getElementById("xa-func").value);
+  const{d,mi}=m;
+  fecharExtraModal();
+  renderEsc(d,mi);
+}
+
+// --- Tela do cadastro (Configurações; só Master cadastra, edita, desativa e exclui) ---
+async function abrirConfigExtras(){
+  if(NIVEL_ACESSO!=="master")return;
+  window._extraCad={edit:null};
+  document.getElementById("modal").innerHTML=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox"><div class="cal-modal-hd"><h3>⭐ Cadastro de extras</h3><button class="cal-close" onclick="abrirDrawer()">‹</button></div><div class="aus-empty">Carregando…</div></div></div>`;
+  await carregarExtrasCad(true);
+  renderConfigExtras();
+}
+function renderConfigExtras(){
+  const st=window._extraCad||(window._extraCad={edit:null});
+  let h=`<div class="mov" onclick="if(event.target===this)abrirDrawer()"><div class="mbox" style="max-height:88vh;overflow-y:auto">
+    <div class="cal-modal-hd"><h3>⭐ Cadastro de extras</h3><button class="cal-close" onclick="${st.edit!=null?"extraCadCancelar()":"abrirDrawer()"}">${st.edit!=null?"✕":"‹"}</button></div>`;
+  if(EXTRAS_CAD===null){
+    h+=`<div class="aus-empty">Não foi possível carregar o cadastro. Confirme que o SQL do cadastro de extras foi executado no Supabase.</div><div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
+    document.getElementById("modal").innerHTML=h;return;
+  }
+  if(st.edit!=null){
+    const novo=st.edit==="novo";
+    const c=novo?{nome:"",funcao:"",valor:"",ativo:true}:EXTRAS_CAD.find(x=>x.id===st.edit);
+    if(!c){st.edit=null;renderConfigExtras();return;}
+    const lab=`display:block;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px`;
+    const inp=`width:100%;font-size:14px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);margin-bottom:10px;font-family:inherit`;
+    h+=`<p class="msub">${novo?"Novo extra. O valor é a diária combinada e fica só aqui e nos relatórios.":"Mudar nome, função ou valor aqui vale só para as próximas inclusões. Dias e relatórios anteriores não mudam."}</p>
+    <label style="${lab}">Nome</label>
+    <input type="text" id="xc-nome" value="${manutEsc(c.nome)}" placeholder="Nome do extra" style="${inp}">
+    <label style="${lab}">Função</label>
+    <select id="xc-func" style="${inp}"><option value="">Escolha a função</option>${FUNCOES_EXTRA.map(f=>`<option value="${f.v}"${f.v===c.funcao?" selected":""}>${f.v}</option>`).join("")}</select>
+    <label style="${lab}">Valor combinado (R$)</label>
+    <input type="number" step="0.01" min="0" id="xc-valor" value="${c.valor===""||c.valor==null?"":c.valor}" placeholder="R$" style="${inp}">
+    <div class="macts xc-acts">
+      <button onclick="extraCadCancelar()">Cancelar</button>
+      ${novo?"":`<button onclick="alternarAtivoExtraCad(${jsAttr(c.id)})">${c.ativo?"Desativar":"Reativar"}</button><button class="brd" onclick="excluirExtraCad(${jsAttr(c.id)})">Excluir</button>`}
+      <button class="bok" onclick="salvarExtraCad()">Salvar ✓</button>
+    </div>`;
+  }else{
+    const ativos=EXTRAS_CAD.filter(c=>c.ativo),inativos=EXTRAS_CAD.filter(c=>!c.ativo);
+    const linha=c=>`<button class="fs-func-btn" onclick="editarExtraCad(${jsAttr(c.id)})"${c.ativo?"":` style="opacity:.6"`}><span style="text-align:left"><span style="font-weight:700">${manutEsc(c.nome)}</span><br><small style="color:var(--text2)">${manutEsc(c.funcao||"")}</small></span><div class="fs-func-right"><span class="fs-func-count has">R$${fmtValorExtra(c.valor)||"0"}</span><span style="color:var(--border-s)">›</span></div></button>`;
+    h+=`<p class="msub">Pessoas que trabalham como extra com frequência. Na escala, o "+ extra..." mostra só nome e função; o valor é gravado junto no dia, sem aparecer.</p>`;
+    h+=ativos.length?ativos.map(linha).join(""):`<div class="aus-empty">Nenhum extra cadastrado. Toque em "+ Novo extra".</div>`;
+    if(inativos.length)h+=`<div class="sec-title" style="margin:16px 0 8px">Inativos</div>${inativos.map(linha).join("")}`;
+    h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button><button class="bok" onclick="novoExtraCad()">+ Novo extra</button></div>`;
+  }
+  h+=`</div></div>`;
+  document.getElementById("modal").innerHTML=h;
+}
+function novoExtraCad(){if(NIVEL_ACESSO!=="master")return;window._extraCad={edit:"novo"};renderConfigExtras();}
+function editarExtraCad(id){if(NIVEL_ACESSO!=="master")return;window._extraCad={edit:id};renderConfigExtras();}
+function extraCadCancelar(){window._extraCad={edit:null};renderConfigExtras();}
+async function salvarExtraCad(){
+  if(NIVEL_ACESSO!=="master")return;
+  const st=window._extraCad;
+  if(!st||st.edit==null||!EXTRAS_CAD)return;
+  const nome=(document.getElementById("xc-nome").value||"").replace(/\s+/g," ").trim();
+  const funcao=document.getElementById("xc-func").value;
+  const num=parseFloat(String(document.getElementById("xc-valor").value||"").replace(",","."));
+  if(!nome){avisoErro("Informe o nome.");return;}
+  if(!FUNCOES_EXTRA.some(f=>f.v===funcao)){avisoErro("Escolha a função.");return;}
+  if(isNaN(num)||num<=0){avisoErro("Informe o valor combinado (maior que zero).");return;}
+  const valor=Math.round(num*100)/100;
+  const chave=extraChave(nome);
+  if(EXTRAS_CAD.some(c=>extraChave(c.nome)===chave&&c.id!==st.edit)){avisoErro("Já existe um extra com esse nome no cadastro.");return;}
+  if(st.edit==="novo"){
+    const{data,error}=await supabaseClient.from("extras_cadastro").insert({restaurante_id:RESTAURANTE_ID,nome,nome_chave:chave,funcao,valor}).select().single();
+    if(error){avisoErro(error.code==="23505"?"Já existe um extra com esse nome no cadastro.":"Não foi possível salvar o extra no cadastro.");return;}
+    EXTRAS_CAD.push({id:data.id,nome,funcao,valor,ativo:true});
+  }else{
+    const{error}=await supabaseClient.from("extras_cadastro").update({nome,nome_chave:chave,funcao,valor,updated_at:new Date().toISOString()}).eq("id",st.edit).eq("restaurante_id",RESTAURANTE_ID);
+    if(error){avisoErro(error.code==="23505"?"Já existe um extra com esse nome no cadastro.":"Não foi possível salvar o extra no cadastro.");return;}
+    const c=EXTRAS_CAD.find(x=>x.id===st.edit);
+    if(c){c.nome=nome;c.funcao=funcao;c.valor=valor;}
+  }
+  ordenarExtrasCad();
+  window._extraCad={edit:null};
+  renderConfigExtras();
+  showToast("✅ "+nome+" salvo(a) no cadastro.");
+}
+async function alternarAtivoExtraCad(id){
+  if(NIVEL_ACESSO!=="master"||!EXTRAS_CAD)return;
+  const c=EXTRAS_CAD.find(x=>x.id===id);if(!c)return;
+  const ativo=!c.ativo;
+  const{error}=await supabaseClient.from("extras_cadastro").update({ativo,updated_at:new Date().toISOString()}).eq("id",id).eq("restaurante_id",RESTAURANTE_ID);
+  if(error){avisoErro("Não foi possível atualizar o extra.");return;}
+  c.ativo=ativo;
+  window._extraCad={edit:null};
+  renderConfigExtras();
+  showToast(ativo?"✅ "+c.nome+" reativado(a).":"⏸ "+c.nome+" desativado(a).");
+}
+async function excluirExtraCad(id){
+  if(NIVEL_ACESSO!=="master"||!EXTRAS_CAD)return;
+  const c=EXTRAS_CAD.find(x=>x.id===id);if(!c)return;
+  if(!window.confirm(c.nome+" será excluído(a) do cadastro. Extras já incluídos em dias anteriores e os relatórios não mudam. Continuar?"))return;
+  const{error}=await supabaseClient.from("extras_cadastro").delete().eq("id",id).eq("restaurante_id",RESTAURANTE_ID);
+  if(error){avisoErro("Não foi possível excluir o extra.");return;}
+  EXTRAS_CAD=EXTRAS_CAD.filter(x=>x.id!==id);
+  window._extraCad={edit:null};
+  renderConfigExtras();
+  showToast("🗑️ "+c.nome+" excluído(a) do cadastro.");
 }
 
 const bdg=(t,c)=>`<span class="bdg ${c}">${t}</span>`;
@@ -3309,6 +3519,7 @@ const MENU_SECOES=[
     {chave:"dias-funcionamento",label:"Dias de funcionamento",emoji:"🔒",fn:"abrirConfigDiasFuncionamento()"},
     {chave:"logo",label:"Logo do restaurante",emoji:"🖼️",fn:"abrirConfigLogo()"},
     {chave:"acessos",label:"Acessos",emoji:"🔑",fn:"abrirConfigAcessos()",cls:"edit-only"},
+    {chave:"extras-cadastro",label:"Cadastro de extras",emoji:"⭐",fn:"abrirConfigExtras()",cls:"master-only"},
   ]},
   {titulo:"Relatórios",itens:[
     {chave:"faltas-atestados",label:"Faltas e Atestados",emoji:"📊",fn:"openHistorico()"},
