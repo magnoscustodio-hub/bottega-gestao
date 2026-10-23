@@ -373,6 +373,9 @@ select{font-size:13px;padding:9px 28px 9px 12px;border-radius:var(--rs);border:1
    pill só — com nome+função+valor+botão espremidos numa linha só, "Função"
    cortava nos cards mais estreitos do .cgrid (minmax(130px,1fr)). */
 .macts.xc-acts{gap:6px}.macts.xc-acts button{padding:9px 8px;font-size:12px}
+.ag-obs{font-size:12px;color:var(--text2);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;margin-left:46px;white-space:pre-wrap;word-break:break-word}
+.ag-obs-c{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ag-obs-mais{display:block;margin:2px 0 0 46px;padding:5px 0;background:none;border:none;color:var(--blue);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer}
 .extra-abrir{display:block;width:100%;margin:2px 0;padding:8px;border-radius:var(--rs);border:1.5px dashed var(--red-br);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;text-align:center;box-sizing:border-box}
 .extra-input-wrap{display:flex;flex-direction:column;gap:4px;background:var(--red-bg);border:1.5px solid var(--red-br);border-radius:var(--rs);padding:6px 8px;margin:2px 0;width:100%}
 .extra-input-wrap input,.extra-input-wrap select{border:none;background:transparent;font-size:12px;color:var(--red);font-family:inherit;font-weight:600;width:100%}
@@ -3010,7 +3013,7 @@ function renderRelatorioEventos(filtroMeses,filtroStatus){
     h+=`<div class="aus-empty">📭 Nenhum evento concluído ou cancelado nesse período.</div>`;
   } else {
     h+=`<div style="overflow-x:auto"><table class="aus-table"><thead><tr><th>Data</th><th>Horário</th><th>Evento</th><th>Status</th><th>Praça/Local</th><th>Pax</th><th>Observação</th></tr></thead><tbody>
-      ${dados.map(c=>`<tr><td>${fmtData(c.data)}</td><td>${c.hora||"—"}</td><td style="font-weight:700">${c.titulo}</td><td>${c.concluido?'<span class="badge-status concluido">✅ Concluído</span>':'<span class="badge-status cancelado">🚫 Cancelado</span>'}</td><td style="color:var(--text2)">${nomeDaPraca(c.pracaId)}</td><td>${c.paxEsperado||"—"}</td><td style="color:var(--text2)">${c.desc||"—"}</td></tr>`).join("")}
+      ${dados.map(c=>`<tr><td>${fmtData(c.data)}</td><td>${c.hora||"—"}</td><td style="font-weight:700">${c.titulo}</td><td>${c.concluido?'<span class="badge-status concluido">✅ Concluído</span>':'<span class="badge-status cancelado">🚫 Cancelado</span>'}</td><td style="color:var(--text2)">${nomeDaPraca(c.pracaId)}</td><td>${c.paxEsperado||"—"}</td><td style="color:var(--text2);white-space:pre-line">${c.desc?manutEsc(c.desc):"—"}</td></tr>`).join("")}
     </tbody></table></div>`;
   }
   h+=`<div class="macts"><button onclick="abrirDrawer()">Fechar</button></div></div></div>`;
@@ -4867,7 +4870,7 @@ function renderAgendaModal(){
               ${agPodeEditar(c)?`<button onclick="agExcluir('${c.id}')" style="width:28px;height:28px;border-radius:50%;border:1.5px solid var(--border-s);background:var(--surface2);cursor:pointer;color:var(--danger);font-size:14px;display:flex;align-items:center;justify-content:center" title="${c.tipo==="evento"?"Cancelar":"Excluir"}">×</button>`:""}
             </div>
           </div>
-          ${c.desc&&!c.concluido?`<div style="font-size:12px;color:var(--text2);line-height:1.4;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;margin-left:46px">${c.desc}</div>`:""}
+          ${c.desc&&!c.concluido?`<div id="ag-obs-${c.id}" class="ag-obs ag-obs-c">📝 ${manutEsc(c.desc)}</div><button id="ag-obs-bt-${c.id}" class="ag-obs-mais" style="display:none" onclick="agToggleObs('${c.id}')">ver mais</button>`:""}
         </div>`;
       });
     });
@@ -4895,6 +4898,40 @@ function renderAgendaModal(){
       <div class="ag-lista">${itens}</div>
       <button class="ag-fab" onclick="agNovo()">+ Novo compromisso</button>
     </div></div>`;
+  agObsAjustar();
+}
+// Observação na lista: recolhida em 2 linhas; "ver mais" só aparece quando o texto realmente passa disso
+// (medido na tela). Expandir/recolher troca só a classe, sem redesenhar a lista (não perde a rolagem).
+function agObsAjustar(){
+  const modal=document.getElementById("modal");
+  if(!modal||!modal.querySelectorAll)return;
+  modal.querySelectorAll(".ag-obs-c").forEach(el=>{
+    const id=el.id.replace("ag-obs-","");
+    const bt=document.getElementById("ag-obs-bt-"+id);
+    if(bt)bt.style.display=el.scrollHeight>el.clientHeight+1?"block":"none";
+  });
+}
+function agToggleObs(id){
+  const el=document.getElementById("ag-obs-"+id),bt=document.getElementById("ag-obs-bt-"+id);
+  if(!el)return;
+  const recolhida=el.classList.toggle("ag-obs-c");
+  if(bt){bt.textContent=recolhida?"ver mais":"ver menos";bt.style.display="block";}
+}
+// Contador do campo de observação (formulário da Agenda e cartão do evento): "n / 1000".
+function agObsContar(el){
+  const c=document.getElementById(el.id+"-cont");
+  if(c)c.textContent=el.value.length+" / 1000";
+}
+const AG_OBS_MAX=1000;
+// Campo "Observação (opcional)": texto puro (o conteúdo vai escapado), até 1000 caracteres.
+function agObsCampoHtml(id,texto,fundo){
+  const lab="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px";
+  const v=texto||"";
+  return `<div class="field" style="margin-bottom:14px">
+        <label style="${lab}">Observação (opcional)</label>
+        <textarea id="${id}" rows="4" maxlength="${AG_OBS_MAX}" oninput="agObsContar(this)" placeholder="Detalhes que só escrevendo mesmo..." style="width:100%;font-size:14px;line-height:1.4;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:${fundo};color:var(--text);font-family:inherit;resize:vertical">${manutEsc(v)}</textarea>
+        <div id="${id}-cont" style="font-size:11px;color:var(--text3);text-align:right;margin-top:3px">${v.length} / ${AG_OBS_MAX}</div>
+      </div>`;
 }
 
 function agSetFiltro(f){agFiltro=f;renderAgendaModal();}
@@ -4920,6 +4957,7 @@ function agTogglePermanente(){
     prioridade:document.getElementById("ag-prior").value,
     recorrencia:"nunca",
     visibilidade:document.getElementById("ag-vis").value,
+    desc:document.getElementById("ag-desc")?document.getElementById("ag-desc").value:"",
   });
 }
 function renderAgendaForm(c){
@@ -4928,7 +4966,7 @@ function renderAgendaForm(c){
       <h3>${agEditId?"✏️ Editar":"➕ Novo compromisso"}</h3>
       <div class="field" style="margin-bottom:14px"><label>Tipo</label>
         <div class="tipo-grid">${Object.entries(AG_TIPOS).map(([k,t])=>`
-          <button class="tipo-btn${agTipo===k?" sel":""}" style="${agTipo===k?"background:"+t.cor+";border-color:"+t.cor+";":""}" onclick="agSelTipo('${k}','${(c.titulo||"").replace(/'/g,"\'")}','${c.data||agHoje()}','${c.hora||""}','${c.prioridade||"normal"}','${(c.desc||"").replace(/'/g,"\'")}','${c.recorrencia||"nunca"}','${c.visibilidade||"compartilhado"}','${c.paxEsperado||""}','${c.pracaId||""}')">
+          <button class="tipo-btn${agTipo===k?" sel":""}" style="${agTipo===k?"background:"+t.cor+";border-color:"+t.cor+";":""}" onclick="agSelTipo('${k}')">
             ${t.emoji}<br><span style="font-size:10px">${t.label}</span>
           </button>`).join("")}
         </div>
@@ -4988,6 +5026,7 @@ function renderAgendaForm(c){
           </select>
         </div>
       </div>`:""}
+      ${agObsCampoHtml("ag-desc",c.desc,"var(--surface2)")}
       <div class="field" style="margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Visibilidade</label>
         <select id="ag-vis" style="width:100%;font-size:13px;padding:10px 12px;border-radius:var(--rs);border:1.5px solid var(--border-s);background:var(--surface2);color:var(--text);font-family:inherit;-webkit-appearance:none">
@@ -4998,10 +5037,22 @@ function renderAgendaForm(c){
       <div class="macts"><button onclick="renderAgendaModal()">Cancelar</button><button class="bok" onclick="agSalvar()">Salvar</button></div>
     </div></div>`;
 }
-function agSelTipo(k,titulo,data,hora,prior,desc,recor,vis,pax,praca){
+// Lê o que está nos campos agora (inclusive o que foi digitado e ainda não salvo) -- nada passa por
+// atributo onclick, então aspas, apóstrofo e quebra de linha na observação/título não quebram nada.
+function agLerCamposForm(){
+  const v=(id,pad="")=>{const el=document.getElementById(id);return el&&el.value!=null?el.value:pad;};
+  return{
+    titulo:v("ag-titulo"),data:v("ag-data-display",agHoje())||agHoje(),hora:v("ag-hora"),
+    prioridade:v("ag-prior","normal")||"normal",desc:v("ag-desc"),
+    recorrencia:v("ag-recor","nunca")||"nunca",visibilidade:v("ag-vis","compartilhado")||"compartilhado",
+    paxEsperado:v("ag-pax")?parseInt(v("ag-pax"),10):null,pracaId:v("ag-praca"),
+  };
+}
+function agSelTipo(k){
+  const campos=agLerCamposForm();
   agTipo=k;
   agPermanente=false;
-  renderAgendaForm({titulo,data,hora,prioridade:prior,desc,tipo:k,recorrencia:recor||"nunca",visibilidade:vis||"compartilhado",paxEsperado:pax?parseInt(pax,10):null,pracaId:praca||""});
+  renderAgendaForm({...campos,tipo:k});
 }
 function agParseData(val){
   // aceita DD/MM/AAAA
@@ -5275,6 +5326,7 @@ function renderModalEvento(c,imgUrl){
         <div class="stat-card"><div class="stat-icon gold">⏰</div><div class="stat-num" style="font-size:18px">${c.hora||"—"}</div><div class="stat-label">Horário</div></div>
         <div class="stat-card"><div class="stat-icon green">📍</div><div class="stat-num" style="font-size:13px">${praca}</div><div class="stat-label">Praça</div></div>
       </div>`}
+      ${podeEditar?agObsCampoHtml("ev-desc",c.desc,"var(--surface)"):(c.desc?`<div class="field" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px"><label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Observação</label><div style="font-size:13px;color:var(--text);line-height:1.45;white-space:pre-wrap;word-break:break-word">${manutEsc(c.desc)}</div></div>`:"")}
       <div class="field" style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
         <label style="font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:5px">Menu (imagem ou PDF)</label>
         ${imgUrl?(c.menuImagemPath&&c.menuImagemPath.toLowerCase().endsWith(".pdf")?`<a href="${imgUrl}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:10px;padding:12px;border-radius:var(--rs);border:1.5px solid var(--border);background:var(--surface);margin-bottom:8px;text-decoration:none;color:var(--text)"><span style="font-size:24px">📄</span><span style="font-size:13px;font-weight:700">Abrir PDF do menu</span></a>`:`<img src="${imgUrl}" onclick="abrirLightbox('${imgUrl}')" style="width:100%;max-height:220px;object-fit:contain;border-radius:var(--rs);border:1.5px solid var(--border);margin-bottom:8px;cursor:pointer">`):`<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Nenhum arquivo enviado.</div>`}
@@ -5298,8 +5350,10 @@ async function salvarModalEvento(id){
   const paxEsperado=paxEl&&paxEl.value?parseInt(paxEl.value,10):null;
   const pracaEl=document.getElementById("ev-praca");
   const pracaId=pracaEl&&pracaEl.value?pracaEl.value:null;
+  const descEl=document.getElementById("ev-desc");
+  const descEv=descEl?descEl.value.trim():(AGENDA.find(x=>x.id===id)||{}).desc||"";
   const{data,error}=await supabaseClient.from("agenda_compromissos")
-    .update({titulo,data:dataEvento,hora:hora||null,pax_esperado:paxEsperado,praca_id:pracaId})
+    .update({titulo,data:dataEvento,hora:hora||null,pax_esperado:paxEsperado,praca_id:pracaId,descricao:descEv||null})
     .eq("id",id).select("id");
   if(error||!data||data.length===0){avisoErro("Sem permissão para editar este evento.");return;}
   await carregarAgenda();
